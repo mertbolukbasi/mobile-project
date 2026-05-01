@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <style name="Theme.App.Starting" parent="Theme.SplashScreen">
+        <!-- Set the splash screen background -->
+        <item name="windowSplashScreenBackground">@color/white</item>
+        
+        <!-- Use windowSplashScreenAnimatedIcon to add a drawable or an animated drawable. -->
+        <!-- User will replace ic_splash_logo with their image -->
+        <item name="windowSplashScreenAnimatedIcon">@drawable/ic_splash_logo</item>
+        
+        <!-- Set the post splash theme -->
+        <item name="postSplashScreenTheme">@style/Theme.Paginex</item>
+    </style>
+</resources>

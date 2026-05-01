@@ -1,0 +1,18 @@
+[
+    {
+        "merged": "com.example.paginex.app-merged_res-62:/xml_data_extraction_rules.xml.flat",
+        "source": "com.example.paginex.app-main-64:/xml/data_extraction_rules.xml"
+    },
+    {
+        "merged": "com.example.paginex.app-merged_res-62:/drawable_ic_splash_logo.png.flat",
+        "source": "com.example.paginex.app-main-64:/drawable/ic_splash_logo.png"
+    },
+    {
+        "merged": "com.example.paginex.app-merged_res-62:/xml_backup_rules.xml.flat",
+        "source": "com.example.paginex.app-main-64:/xml/backup_rules.xml"
+    },
+    {
+        "merged": "com.example.paginex.app-merged_res-62:/drawable_ic_paginex_icon.png.flat",
+        "source": "com.example.paginex.app-main-64:/drawable/ic_paginex_icon.png"
+    }
+]

@@ -1,0 +1,30 @@
+{
+  "project_info": {
+    "project_number": "306539239939",
+    "firebase_url": "https://paginex-dd168-default-rtdb.europe-west1.firebasedatabase.app",
+    "project_id": "paginex-dd168",
+    "storage_bucket": "paginex-dd168.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:306539239939:android:6781acaad8fff674928c36",
+        "android_client_info": {
+          "package_name": "com.example.paginex"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAJ0tVLOxX9j93U1QlT4-Avn7Zv3cQ7nxY"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
