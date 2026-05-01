@@ -490,14 +490,16 @@ fun PaginexHomeScreen(
                 modifier = Modifier.fillMaxSize(),
                 contentPadding = PaddingValues(top = 8.dp, bottom = 90.dp)
             ) {
-            items(posts, key = { it.id }) { post ->
-                BookPostCard(
-                    post = post,
-                    onBookClick = { bookId -> onNavigateToDetail(post.id) },
-                    onEditClick = { postId -> onNavigateToEdit(postId) },
-                    onDeleteClick = { postToDelete -> MockData.feedPosts.remove(postToDelete) }
-                )
-            }
+                items(posts, key = { it.id }) { post ->
+                    BookPostCard(
+                        post = post,
+                        onBookClick = { bookId -> onNavigateToDetail(post.id) },
+                        onEditClick = { postId -> onNavigateToEdit(postId) },
+                        onDeleteClick = { postToDelete -> 
+                            MockData.feedPosts.remove(postToDelete)
+                        }
+                    )
+                }
             }
         }
     }

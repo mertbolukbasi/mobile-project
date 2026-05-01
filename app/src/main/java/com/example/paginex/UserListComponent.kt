@@ -28,8 +28,8 @@ fun UserListSheet(
 ) {
     // Mocking users
     val users = listOf(
-        FireUser(uid = "u2", username = "kitapkurdu", name = "Can", surname = "Demir", avatarUrl = "https://images.unsplash.com/photo-1500648767791-00dcc994a43e?auto=format&fit=crop&q=80&w=200"),
-        FireUser(uid = "u3", username = "deniz_okur", name = "Deniz", surname = "Ak", avatarUrl = "https://images.unsplash.com/photo-1438761681033-6461ffad8d80?auto=format&fit=crop&q=80&w=200")
+        FireUser(id = "u2", username = "kitapkurdu", name = "Can", surname = "Demir", avatarUrl = "https://images.unsplash.com/photo-1500648767791-00dcc994a43e?auto=format&fit=crop&q=80&w=200"),
+        FireUser(id = "u3", username = "deniz_okur", name = "Deniz", surname = "Ak", avatarUrl = "https://images.unsplash.com/photo-1438761681033-6461ffad8d80?auto=format&fit=crop&q=80&w=200")
     )
 
     ModalBottomSheet(

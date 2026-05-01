@@ -6,6 +6,7 @@ import androidx.activity.ComponentActivity
 import androidx.activity.SystemBarStyle
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
 
@@ -20,6 +21,11 @@ class MainActivity : ComponentActivity() {
         setContent {
             var isDarkTheme by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(false) }
             
+            LaunchedEffect(Unit) {
+                FirestoreService.initializeData()
+                FirestoreService.syncMockData()
+            }
+
             androidx.compose.runtime.CompositionLocalProvider(
                 LocalThemeToggle provides { isDarkTheme = !isDarkTheme },
                 androidx.compose.foundation.LocalOverscrollConfiguration provides null

@@ -31,8 +31,8 @@ fun CommentsSheet(
     // Mocking comments for UI demonstration
     val comments = remember {
         mutableStateListOf(
-            FireComment(userId = "u2", text = "Harika bir inceleme! Ben de okumayı düşünüyordum.", tableId = tableId),
-            FireComment(userId = "u3", text = "Bu kitabın sonu beni çok şaşırttı.", tableId = tableId)
+            FireComment(userId = "u2", comment = "Harika bir inceleme! Ben de okumayı düşünüyordum.", tableId = tableId),
+            FireComment(userId = "u3", comment = "Bu kitabın sonu beni çok şaşırttı.", tableId = tableId)
         )
     }
 
@@ -91,7 +91,7 @@ fun CommentsSheet(
                 IconButton(
                     onClick = {
                         if (commentText.isNotBlank()) {
-                            comments.add(FireComment(userId = "u1", text = commentText, tableId = tableId))
+                            comments.add(FireComment(userId = "u1", comment = commentText, tableId = tableId))
                             commentText = ""
                         }
                     },
@@ -125,7 +125,7 @@ fun CommentItem(comment: FireComment) {
                 fontWeight = FontWeight.Bold
             )
             Text(
-                text = comment.text,
+                text = comment.comment,
                 fontSize = 14.sp,
                 color = PaginexWhite,
                 lineHeight = 20.sp

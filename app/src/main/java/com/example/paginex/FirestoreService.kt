@@ -1,112 +1,260 @@
 package com.example.paginex
 
+import android.util.Log
 import com.google.firebase.Timestamp
 import com.google.firebase.firestore.FirebaseFirestore
-import com.google.firebase.firestore.Query
 import kotlinx.coroutines.tasks.await
+import java.util.Calendar
+import java.util.Date
 
-class FirestoreService(private val db: FirebaseFirestore = FirebaseFirestore.getInstance()) {
+object FirestoreService {
+    private val db = FirebaseFirestore.getInstance()
+    private const val TAG = "FirestoreService"
 
-    // --- User Operations ---
-    suspend fun saveUser(user: FireUser) {
-        db.collection("users").document(user.uid).set(user).await()
-    }
+    /**
+     * Initializes Firestore with mock data based on the provided schema image.
+     */
+    suspend fun initializeData() {
+        try {
+            val usersSnap = db.collection("users").get().await()
+            if (!usersSnap.isEmpty) {
+                Log.d(TAG, "Database already initialized. Skipping.")
+                return
+            }
 
-    suspend fun getUser(uid: String): FireUser? {
-        return db.collection("users").document(uid).get().await().toObject(FireUser::class.java)
-    }
+            Log.d(TAG, "Initializing Firestore with schema-aligned mock data...")
 
-    // --- Post Operations ---
-    suspend fun createPost(post: FirePost): String {
-        val docRef = db.collection("posts").document()
-        val postWithId = post.copy(id = docRef.id)
-        docRef.set(postWithId).await()
-        return docRef.id
-    }
+            // 1. Books
+            val fireBooks = MockData.sampleBooks.map { book ->
+                FireBook(
+                    id = book.id,
+                    title = book.title,
+                    author = book.author,
+                    genre = book.genre,
+                    summary = book.summary,
+                    isbn = book.isbn,
+                    rating = 0.0, // Initial rating
+                    publishYear = Timestamp(Date(book.publishYear - 1900, 0, 1)), // Rough conversion
+                    createdAt = Timestamp.now(),
+                    updatedAt = Timestamp.now()
+                )
+            }
+            fireBooks.forEach { db.collection("books").document(it.id).set(it).await() }
 
-    suspend fun getPosts(): List<FirePost> {
-        return db.collection("posts")
-            .orderBy("createdAt", Query.Direction.DESCENDING)
-            .get().await().toObjects(FirePost::class.java)
-    }
+            // 2. Users
+            val fireUsers = listOf(
+                FireUser(id = "u1", username = "ayseyilmaz", name = "Ayşe", surname = "Yılmaz", email = "ayse@example.com"),
+                FireUser(id = "u2", username = "mehmet_okur", name = "Mehmet", surname = "Okur", email = "mehmet@example.com"),
+                FireUser(id = "u3", username = "canan_dağ", name = "Canan", surname = "Dağ", email = "canan@example.com"),
+                FireUser(id = "u4", username = "elif_kitap", name = "Elif", surname = "Kaya", email = "elif@example.com")
+            )
+            fireUsers.forEach { db.collection("users").document(it.id).set(it).await() }
 
-    // --- Interaction Operations (Like/Save/Follow) ---
-    suspend fun toggleLike(userId: String, tableId: String, isLiked: Boolean) {
-        val likeId = "${userId}_${tableId}"
-        val likeRef = db.collection("likes").document(likeId)
-        if (isLiked) {
-            val like = FireLike(id = likeId, userId = userId, tableId = tableId)
-            likeRef.set(like).await()
-        } else {
-            likeRef.delete().await()
+            // 3. Posts (Mapping UI Post to FirePost)
+            // Note: Adding bookId to FirePost to maintain app functionality
+            MockData.feedPosts.forEach { post ->
+                val firePost = hashMapOf(
+                    "id" to post.id,
+                    "userId" to post.userId,
+                    "description" to post.review,
+                    "rating" to post.rating.toDouble(),
+                    "bookId" to post.book.id, // Extension to schema for app compatibility
+                    "createdAt" to Timestamp(Date(post.createdAt)),
+                    "updatedAt" to Timestamp.now()
+                )
+                db.collection("posts").document(post.id).set(firePost).await()
+            }
+
+            // 4. Booklists
+            MockData.sampleBookLists.forEach { list ->
+                val fireList = FireBookList(
+                    id = list.id,
+                    name = list.name,
+                    description = list.description,
+                    userId = "u1",
+                    isPrivate = false
+                )
+                db.collection("booklists").document(list.id).set(fireList).await()
+                
+                // 5. Booklist-Book (Junction)
+                list.books.forEach { book ->
+                    val junctionId = "${list.id}_${book.id}"
+                    val junction = FireBookListBook(
+                        id = junctionId,
+                        booklistId = list.id,
+                        bookId = book.id
+                    )
+                    db.collection("booklist_books").document(junctionId).set(junction).await()
+                }
+            }
+
+            // 6. FavouriteBooks
+            val favs = FireFavouriteBooks(
+                id = "fav1",
+                userId = "u1",
+                bookIds = listOf("b1", "b2", "b3")
+            )
+            db.collection("favourite_books").document(favs.id).set(favs).await()
+
+            // 7. ReadingStatus
+            val status = FireReadingStatus(
+                id = "rs1",
+                userId = "u1",
+                bookId = "b1",
+                status = "Completed"
+            )
+            db.collection("reading_statuses").document(status.id).set(status).await()
+
+            Log.d(TAG, "Full schema initialization complete!")
+        } catch (e: Exception) {
+            Log.e(TAG, "Error during schema initialization", e)
         }
     }
 
-    suspend fun toggleSave(userId: String, tableId: String, isSaved: Boolean) {
-        val saveId = "${userId}_${tableId}"
-        val saveRef = db.collection("saves").document(saveId)
-        if (isSaved) {
-            val save = FireSave(id = saveId, userId = userId, tableId = tableId)
-            saveRef.set(save).await()
-        } else {
-            saveRef.delete().await()
+    suspend fun getFeed(): List<Post> {
+        return try {
+            val postsSnap = db.collection("posts").orderBy("createdAt").get().await()
+            val posts = mutableListOf<Post>()
+            
+            for (doc in postsSnap.documents) {
+                val id = doc.getString("id") ?: ""
+                val userId = doc.getString("userId") ?: ""
+                val description = doc.getString("description") ?: ""
+                val rating = doc.getDouble("rating")?.toFloat() ?: 0f
+                val bookId = doc.getString("bookId") ?: ""
+                val createdAt = doc.getTimestamp("createdAt")?.toDate()?.time ?: System.currentTimeMillis()
+                
+                // Fetch book details to reconstruct UI Post object
+                val bookDoc = db.collection("books").document(bookId).get().await()
+                val fireBook = bookDoc.toObject(FireBook::class.java)
+                
+                if (fireBook != null) {
+                    val book = Book(
+                        id = fireBook.id,
+                        title = fireBook.title,
+                        author = fireBook.author,
+                        coverUrl = MockData.sampleBooks.find { it.id == fireBook.id }?.coverUrl ?: "",
+                        genre = fireBook.genre,
+                        publishYear = 2020, // Simplified
+                        summary = fireBook.summary,
+                        isbn = fireBook.isbn
+                    )
+                    
+                    posts.add(Post(
+                        id = id,
+                        userId = userId,
+                        book = book,
+                        status = "Okundu", // Placeholder
+                        rating = rating,
+                        review = description,
+                        createdAt = createdAt
+                    ))
+                }
+            }
+            posts
+        } catch (e: Exception) {
+            Log.e(TAG, "Error getting feed", e)
+            emptyList()
         }
     }
 
-    suspend fun toggleFollow(followerId: String, followingId: String, isFollowing: Boolean) {
-        val followId = "${followerId}_${followingId}"
-        val followRef = db.collection("follows").document(followId)
-        if (isFollowing) {
-            val follow = FireFollow(id = followId, followerId = followerId, followingId = followingId)
-            followRef.set(follow).await()
-        } else {
-            followRef.delete().await()
+    suspend fun getUserProfile(userId: String): User? {
+        return try {
+            val userDoc = db.collection("users").document(userId).get().await()
+            val fireUser = userDoc.toObject(FireUser::class.java)
+            if (fireUser != null) {
+                User(
+                    id = fireUser.id,
+                    username = fireUser.username,
+                    fullName = "${fireUser.name} ${fireUser.surname}",
+                    avatarUrl = "https://images.unsplash.com/photo-1494790108377-be9c29b29330?auto=format&fit=crop&q=80&w=200",
+                    bio = "Paginex kullanıcısı"
+                )
+            } else null
+        } catch (e: Exception) {
+            Log.e(TAG, "Error getting user profile", e)
+            null
         }
     }
 
-    // --- Reading Status ---
-    suspend fun updateReadingStatus(userId: String, bookId: String, status: String) {
-        val statusId = "${userId}_${bookId}"
-        val readingStatus = FireReadingStatus(id = statusId, userId = userId, bookId = bookId, status = status)
-        db.collection("readingStatuses").document(statusId).set(readingStatus).await()
+    suspend fun createPost(post: Post): Boolean {
+        return try {
+            val firePost = hashMapOf(
+                "id" to post.id,
+                "userId" to post.userId,
+                "description" to post.review,
+                "rating" to post.rating.toDouble(),
+                "bookId" to post.book.id,
+                "createdAt" to Timestamp.now(),
+                "updatedAt" to Timestamp.now()
+            )
+            db.collection("posts").document(post.id).set(firePost).await()
+            true
+        } catch (e: Exception) {
+            Log.e(TAG, "Error creating post", e)
+            false
+        }
     }
 
-    // --- Comment Operations ---
-    suspend fun addComment(comment: FireComment): String {
-        val docRef = db.collection("comments").document()
-        val commentWithId = comment.copy(id = docRef.id)
-        docRef.set(commentWithId).await()
-        return docRef.id
-    }
+    suspend fun syncMockData() {
+        try {
+            // 1. Sync Books
+            val booksSnap = db.collection("books").get().await()
+            val fireBooks = booksSnap.toObjects(FireBook::class.java)
+            MockData.sampleBooks.clear()
+            MockData.sampleBooks.addAll(fireBooks.map { fb ->
+                Book(
+                    id = fb.id,
+                    title = fb.title,
+                    author = fb.author,
+                    coverUrl = "https://images.unsplash.com/photo-1541963463532-d68292c34b19?auto=format&fit=crop&q=80&w=400", // Fallback
+                    genre = fb.genre,
+                    publishYear = fb.publishYear?.toDate()?.let { 
+                        val cal = Calendar.getInstance()
+                        cal.time = it
+                        cal.get(Calendar.YEAR)
+                    } ?: 2020,
+                    summary = fb.summary,
+                    isbn = fb.isbn
+                )
+            })
 
-    suspend fun getCommentsForTable(tableId: String): List<FireComment> {
-        return db.collection("comments")
-            .whereEqualTo("tableId", tableId)
-            .orderBy("createdAt", Query.Direction.ASCENDING)
-            .get().await().toObjects(FireComment::class.java)
-    }
+            // 2. Sync Feed Posts
+            val posts = getFeed()
+            MockData.feedPosts.clear()
+            MockData.feedPosts.addAll(posts)
+            
+            // 3. Sync Current User
+            val user = getUserProfile("u1")
+            if (user != null) {
+                MockData.currentUser = user
+            }
 
-    // --- Booklist Operations ---
-    suspend fun createBookList(bookList: FireBookList): String {
-        val docRef = db.collection("booklists").document()
-        val listWithId = bookList.copy(id = docRef.id)
-        docRef.set(listWithId).await()
-        return docRef.id
-    }
+            // 4. Sync BookLists
+            val listsSnap = db.collection("booklists").get().await()
+            val fireLists = listsSnap.toObjects(FireBookList::class.java)
+            MockData.sampleBookLists.clear()
+            fireLists.forEach { fl ->
+                val booksInList = mutableListOf<Book>()
+                // Fetch junction data
+                val junctionSnap = db.collection("booklist_books").whereEqualTo("booklistId", fl.id).get().await()
+                junctionSnap.documents.forEach { jDoc ->
+                    val bId = jDoc.getString("bookId")
+                    MockData.sampleBooks.find { it.id == bId }?.let { booksInList.add(it) }
+                }
+                
+                MockData.sampleBookLists.add(BookList(
+                    id = fl.id,
+                    name = fl.name,
+                    description = fl.description,
+                    coverUrl = booksInList.firstOrNull()?.coverUrl ?: "",
+                    books = booksInList
+                ))
+            }
 
-    suspend fun addBookToBookList(listId: String, bookId: String) {
-        val entryId = "${listId}_${bookId}"
-        val data = mapOf(
-            "booklistId" to listId,
-            "bookId" to bookId,
-            "createdAt" to Timestamp.now()
-        )
-        db.collection("booklist_books").document(entryId).set(data).await()
-    }
-
-    // --- Favourites ---
-    suspend fun updateFavouriteBooks(userId: String, bookIds: List<String>) {
-        val favs = FireFavouriteBooks(userId = userId, bookIds = bookIds)
-        db.collection("favouriteBooks").document(userId).set(favs).await()
+            Log.d(TAG, "MockData fully synced with Firestore")
+        } catch (e: Exception) {
+            Log.e(TAG, "Error syncing MockData", e)
+        }
     }
 }

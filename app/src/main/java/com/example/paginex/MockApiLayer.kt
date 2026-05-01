@@ -1,6 +1,10 @@
 package com.example.paginex
 
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
+
 data class User(
     val id: String,
     val username: String,
@@ -49,7 +53,7 @@ data class BookList(
 
 // --- MOCK DATA SAMPLES ---
 object MockData {
-    val currentUser = User(
+    var currentUser by mutableStateOf(User(
         id = "u1",
         username = "ayseyilmaz",
         fullName = "Ayşe Yılmaz",
@@ -59,9 +63,9 @@ object MockData {
         joinDate = "Katılma: Ocak 2024",
         followingCount = 234,
         followersCount = 512
-    )
+    ))
 
-    val sampleBooks = listOf(
+    val sampleBooks = mutableStateListOf<Book>(
         Book("b1", "1984", "George Orwell", "https://images.unsplash.com/photo-1541963463532-d68292c34b19?auto=format&fit=crop&q=80&w=400", "Distopya", 1949, "Totaliter bir distopyada geçen ve bireyselliğin yok edildiği korkutucu bir gelecek tasviri."),
         Book("b2", "Sapiens", "Yuval Noah Harari", "https://images.unsplash.com/photo-1544947950-fa07a98d237f?auto=format&fit=crop&q=80&w=400", "Tarih", 2011, "İnsan türünün ortaya çıkışından günümüze kadar olan evrimini ve kültürel gelişimini inceleyen başyapıt."),
         Book("b3", "Küçük Prens", "Antoine de Saint-Exupéry", "https://images.unsplash.com/photo-1512820790803-83ca734da794?auto=format&fit=crop&q=80&w=400", "Klasik", 1943, "Bir çocuğun gözünden büyüklerin dünyasının anlamsızlıklarını saf bir dille anlatan zamansız bir masal."),
@@ -140,7 +144,7 @@ object MockData {
         )
     )
 
-    val explorePosts = listOf(
+    val explorePosts = mutableStateListOf(
         "https://images.unsplash.com/photo-1544716278-ca5e3f4abd8c?auto=format&fit=crop&q=80&w=400",
         "https://images.unsplash.com/photo-1589998059171-988d887df646?auto=format&fit=crop&q=80&w=400",
         "https://images.unsplash.com/photo-1543005127-b01676674291?auto=format&fit=crop&q=80&w=400",
@@ -155,7 +159,7 @@ object MockData {
         "https://images.unsplash.com/photo-1491843343513-39908cf2ce6f?auto=format&fit=crop&q=80&w=400"
     )
 
-    val sampleBookLists = mutableListOf(
+    val sampleBookLists = mutableStateListOf(
         BookList(
             id = "bl1",
             name = "Favori Distopyalarım",
@@ -185,11 +189,20 @@ object MockData {
 // --- REPOSITORY INTERFACE ---
 interface PaginexRepository {
     suspend fun getFeed(): List<Post>
-    suspend fun getUserProfile(userId: String): User
+    suspend fun getUserProfile(userId: String): User?
     suspend fun createPost(post: Post): Boolean
 }
 
-// --- MOCK IMPLEMENTATION (Backendless) ---
+// --- FIRESTORE IMPLEMENTATION ---
+class FirestorePaginexRepository : PaginexRepository {
+    override suspend fun getFeed(): List<Post> = FirestoreService.getFeed()
+    
+    override suspend fun getUserProfile(userId: String): User? = FirestoreService.getUserProfile(userId)
+    
+    override suspend fun createPost(post: Post): Boolean = FirestoreService.createPost(post)
+}
+
+// --- MOCK IMPLEMENTATION (Legacy/Backup) ---
 class MockPaginexRepository : PaginexRepository {
     override suspend fun getFeed(): List<Post> = MockData.feedPosts
     
