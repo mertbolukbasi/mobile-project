@@ -573,9 +573,11 @@ fun PaginexHomeScreen(
 ) {
     val listState = rememberLazyListState()
     var currentSortMode by remember { mutableStateOf("Latest") }
-    var isAscending by remember { mutableStateOf(true) }
+    var isAscending by remember { mutableStateOf(false) } // Default to false for Latest
     val scope = rememberCoroutineScope()
     
+    var showSortMenu by remember { mutableStateOf(false) }
+
     // Refresh data from Firestore on load and when explicitly needed
     var isRefreshing by remember { mutableStateOf(false) }
     var refreshTrigger by remember { mutableStateOf(0) }
@@ -610,12 +612,11 @@ fun PaginexHomeScreen(
                             filtered.sortedWith(compareByDescending<Post> { it.rating }.thenByDescending { it.createdAt })
                         }
                     }
-                    .take(2)
             } else {
                 recentPuanPosts
             }
         }
-        else -> MockData.feedPosts.sortedByDescending { it.createdAt } // Default to most recent
+        else -> if (isAscending) MockData.feedPosts.sortedBy { it.createdAt } else MockData.feedPosts.sortedByDescending { it.createdAt }
     }
 
     val snackbarHostState = remember { SnackbarHostState() }
@@ -646,6 +647,57 @@ fun PaginexHomeScreen(
                 actions = {
                     val toggleTheme = LocalThemeToggle.current
                     val isDark = LocalIsDarkTheme.current
+                    
+                    // Sort Order Toggle
+                    IconButton(onClick = { isAscending = !isAscending }) {
+                        Icon(
+                            imageVector = if (isAscending) Icons.Default.ArrowUpward else Icons.Default.ArrowDownward,
+                            contentDescription = "Sort Order",
+                            tint = PaginexNeonTeal
+                        )
+                    }
+
+                    // Sort/Filter Menu
+                    Box {
+                        IconButton(onClick = { showSortMenu = true }) {
+                            Icon(Icons.Default.FilterList, contentDescription = "Sort Options", tint = PaginexNeonPurple)
+                        }
+                        DropdownMenu(
+                            expanded = showSortMenu,
+                            onDismissRequest = { showSortMenu = false },
+                            modifier = Modifier.background(PaginexGalaxy)
+                        ) {
+                            val options = listOf("Latest", "A-Z", "Rating")
+                            options.forEach { option ->
+                                DropdownMenuItem(
+                                    text = { 
+                                        Text(
+                                            text = option, 
+                                            color = if (currentSortMode == option) PaginexNeonPurple else PaginexWhite,
+                                            fontWeight = if (currentSortMode == option) FontWeight.Bold else FontWeight.Normal
+                                        ) 
+                                    },
+                                    onClick = {
+                                        currentSortMode = option
+                                        showSortMenu = false
+                                        // Auto-set direction for better UX
+                                        isAscending = when(option) {
+                                            "Latest" -> false
+                                            "A-Z" -> true
+                                            "Rating" -> false
+                                            else -> false
+                                        }
+                                    },
+                                    leadingIcon = {
+                                        if (currentSortMode == option) {
+                                            Icon(Icons.Default.Check, null, tint = PaginexNeonPurple, modifier = Modifier.size(18.dp))
+                                        }
+                                    }
+                                )
+                            }
+                        }
+                    }
+
                     IconButton(onClick = toggleTheme) {
                         Text(if (isDark) "🌞" else "🌙", fontSize = 20.sp)
                     }
@@ -655,51 +707,6 @@ fun PaginexHomeScreen(
         }
     ) { padding ->
         Column(modifier = Modifier.fillMaxSize().padding(padding)) {
-            // Sort Bar
-            LazyRow(
-                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                val sortOptions = listOf("Latest", "A-Z", "Rating")
-                items(sortOptions, key = { it }) { option ->
-                    val isSelected = currentSortMode == option
-                    val label = if ((option == "A-Z" || option == "Rating") && isSelected) {
-                        if (isAscending) "$option ↑" else "$option ↓"
-                    } else option
-                    
-                    val contentColor = if (isSelected) Color.White else PaginexWhite
-                    val containerColor = if (isSelected) PaginexNeonPurple else PaginexGlass
-                    val borderColor = if (isSelected) PaginexNeonPurple else PaginexGlassBorder
-
-                    Surface(
-                        onClick = { 
-                            if (currentSortMode == option) {
-                                // If already selected, toggle direction if applicable
-                                if (option == "A-Z" || option == "Rating") {
-                                    isAscending = !isAscending
-                                }
-                            } else {
-                                // If a new one is clicked, set it as the only active one
-                                currentSortMode = option
-                                // Default directions for new selection
-                                isAscending = option == "A-Z"
-                            }
-                        },
-                        color = containerColor,
-                        shape = RoundedCornerShape(16.dp),
-                        border = BorderStroke(1.dp, borderColor)
-                    ) {
-                        Text(
-                            text = label,
-                            modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
-                            color = contentColor,
-                            fontWeight = FontWeight.Bold,
-                            fontSize = 13.sp
-                        )
-                    }
-                }
-            }
-
             androidx.compose.material3.pulltorefresh.PullToRefreshBox(
                 isRefreshing = isRefreshing,
                 onRefresh = { refreshTrigger++ },
