@@ -435,9 +435,11 @@ fun BookPostCard(
                                 color = PaginexWhite.copy(alpha = 0.7f)
                             )
                         }
-                        StatusBadge(post.status)
+                        if (!post.isBooklistPost) {
+                            StatusBadge(post.status)
+                        }
                         
-                        if (post.rating > 0f) {
+                        if (!post.isBooklistPost && post.rating > 0f) {
                             Surface(
                                 color = Color(0xFFFFD700).copy(alpha = 0.1f),
                                 shape = RoundedCornerShape(16.dp),
@@ -509,13 +511,15 @@ fun BookPostCard(
                 
                 Spacer(modifier = Modifier.weight(1f))
                 
-                IconButton(onClick = onSaveClick, modifier = Modifier.size(28.dp)) {
-                    Icon(
-                        imageVector = if (post.isSaved) Icons.Default.Bookmark else Icons.Default.BookmarkBorder,
-                        contentDescription = null,
-                        tint = if (post.isSaved) PaginexNeonPurple else PaginexWhite,
-                        modifier = Modifier.size(28.dp)
-                    )
+                if (!post.isBooklistPost) {
+                    IconButton(onClick = onSaveClick, modifier = Modifier.size(28.dp)) {
+                        Icon(
+                            imageVector = if (post.isSaved) Icons.Default.Bookmark else Icons.Default.BookmarkBorder,
+                            contentDescription = null,
+                            tint = if (post.isSaved) PaginexNeonPurple else PaginexWhite,
+                            modifier = Modifier.size(28.dp)
+                        )
+                    }
                 }
             }
             

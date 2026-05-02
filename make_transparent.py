@@ -1,7 +1,7 @@
 from PIL import Image
 
 try:
-    img = Image.open('/Users/ramazanbirkan/Desktop/Mobile_Application/app/src/main/res/drawable/ic_splash_logo.png')
+    img = Image.open('/home/burak/Desktop/mobile-project/app/src/main/res/drawable/ic_paginex_icon.png')
     img = img.convert("RGBA")
     datas = img.getdata()
 
@@ -22,7 +22,7 @@ try:
             newData.append(item)
 
     img.putdata(newData)
-    img.save('/Users/ramazanbirkan/Desktop/Mobile_Application/app/src/main/res/drawable/ic_splash_logo.png', "PNG")
+    img.save('/home/burak/Desktop/mobile-project/app/src/main/res/drawable/ic_paginex_icon.png', "PNG")
     print("Success")
 except Exception as e:
     print(e)

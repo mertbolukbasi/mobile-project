@@ -26,7 +26,7 @@ class MainActivity : ComponentActivity() {
             }
             
             LaunchedEffect(Unit) {
-                FirestoreService.initializeData(forceReset = false) // Set to true to drop the db and write seed data unconditionally
+                FirestoreService.initializeData(forceReset = true) // Set to true to drop the db and write seed data unconditionally
                 FirestoreService.syncMockData()
             }
 

@@ -10,5 +10,5 @@ def finalize(image_path):
     
     img.save(image_path, "PNG")
 
-finalize('/Users/ramazanbirkan/Desktop/Mobile_Application/app/src/main/res/drawable/ic_splash_logo.png')
+finalize('/home/burak/Desktop/mobile-project/app/src/main/res/drawable/ic_splash_logo.png')
 print("Finalize: Resized and saved")

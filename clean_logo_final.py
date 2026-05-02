@@ -38,5 +38,5 @@ def clean_advanced(image_path):
         
     new_img.save(image_path, "PNG")
 
-clean_advanced('/Users/ramazanbirkan/Desktop/Mobile_Application/app/src/main/res/drawable/ic_splash_logo.png')
+clean_advanced('/home/burak/Desktop/mobile-project/app/src/main/res/drawable/ic_paginex_icon.png')
 print("Advanced cleaning complete")

@@ -24,5 +24,5 @@ def remove_background(image_path):
     img.putdata(newData)
     img.save(image_path, "PNG")
 
-remove_background('/Users/ramazanbirkan/Desktop/Mobile_Application/app/src/main/res/drawable/ic_splash_logo.png')
+remove_background('/home/burak/Desktop/mobile-project/app/src/main/res/drawable/ic_splash_logo.png')
 print("Transparency applied")

@@ -26,13 +26,14 @@ data class Book(
     val genre: String = "Genel",
     val publishYear: Int = 2020,
     val summary: String = "",
-    val isbn: String = ""
+    val isbn: String = "",
+    val isSaved: Boolean = false
 )
 
 data class Post(
     val id: String,
     val userId: String,
-    val book: Book,
+    val book: Book, // If it's a booklist post, this will hold a dummy book for UI compatibility
     val status: String,
     val rating: Float,
     val review: String,
@@ -41,7 +42,9 @@ data class Post(
     val commentsCount: Int = 0,
     val isLiked: Boolean = false,
     val isSaved: Boolean = false,
-    val createdAt: Long = System.currentTimeMillis()
+    val createdAt: Long = System.currentTimeMillis(),
+    val isBooklistPost: Boolean = false,
+    val booklist: BookList? = null
 )
 
 data class BookList(
@@ -54,6 +57,7 @@ data class BookList(
     val likesCount: Int = 0,
     val isLiked: Boolean = false,
     val isSaved: Boolean = false,
+    val createdAt: Long = System.currentTimeMillis(),
     val books: MutableList<Book> = mutableListOf()
 )
 
@@ -78,6 +82,7 @@ object MockData {
     val feedPosts = mutableStateListOf<Post>()
     val explorePosts = mutableStateListOf<String>()
     val sampleBookLists = mutableStateListOf<BookList>()
+    val sampleUsers = mutableStateListOf<User>()
     val drafts = mutableStateListOf<Post>()
     val readingStatuses = mutableStateListOf<ReadingStatus>()
 }

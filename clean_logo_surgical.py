@@ -38,5 +38,5 @@ def clean(image_path):
         
     img.save(image_path, "PNG")
 
-clean('/Users/ramazanbirkan/Desktop/Mobile_Application/app/src/main/res/drawable/ic_splash_logo.png')
+clean('/home/burak/Desktop/mobile-project/app/src/main/res/drawable/ic_paginex_icon.png')
 print("Surgical cleaning done")

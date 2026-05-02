@@ -243,12 +243,13 @@ object FirestoreService {
                 )
             )
             seedPosts.forEach { db.collection("posts").document(it["id"] as String).set(it).await() }
-
             // 4. Booklists
             val seedLists = listOf(
                 FireBookList(id = "bl1", name = "My Favorite Dystopias", description = "Dark future stories", userId = "u1"),
                 FireBookList(id = "bl2", name = "To Read List", description = "Up next...", userId = "u1"),
-                FireBookList(id = "bl3", name = "Classic Works", description = "Timeless books", userId = "u1")
+                FireBookList(id = "bl3", name = "Classic Works", description = "Timeless books", userId = "u1"),
+                FireBookList(id = "bl4", name = "History Buff", description = "Best history books", userId = "u2"),
+                FireBookList(id = "bl5", name = "Fantasy Escapes", description = "Magical realms", userId = "u3")
             )
             seedLists.forEach { db.collection("booklists").document(it.id).set(it).await() }
 
@@ -256,7 +257,9 @@ object FirestoreService {
             val junctions = listOf(
                 "bl1" to "b1", "bl1" to "b7",
                 "bl2" to "b4", "bl2" to "b5", "bl2" to "b8",
-                "bl3" to "b3", "bl3" to "b5"
+                "bl3" to "b3", "bl3" to "b5",
+                "bl4" to "b2", "bl4" to "b11",
+                "bl5" to "b6", "bl5" to "b10", "bl5" to "b14"
             )
             junctions.forEach { (listId, bookId) ->
                 val junctionId = "${listId}_${bookId}"
@@ -265,15 +268,31 @@ object FirestoreService {
                 ).await()
             }
 
+            // Add reading statuses for u2 and u3 to satisfy the rule
+            val u2u3ReadingStatuses = listOf(
+                FireReadingStatus(id = "rs_u2_1", userId = "u2", bookId = "b2", status = "Completed"),
+                FireReadingStatus(id = "rs_u2_2", userId = "u2", bookId = "b11", status = "Completed"),
+                FireReadingStatus(id = "rs_u3_1", userId = "u3", bookId = "b6", status = "Completed"),
+                FireReadingStatus(id = "rs_u3_2", userId = "u3", bookId = "b10", status = "Completed"),
+                FireReadingStatus(id = "rs_u3_3", userId = "u3", bookId = "b14", status = "Completed")
+            )
+            u2u3ReadingStatuses.forEach { db.collection("reading_statuses").document(it.id).set(it).await() }
+
             // 6. FavouriteBooks
             db.collection("favourite_books").document("fav1").set(
                 FireFavouriteBooks(id = "fav1", userId = "u1", bookIds = listOf("b1", "b2", "b3"))
             ).await()
 
             // 7. ReadingStatus
-            db.collection("reading_statuses").document("rs1").set(
-                FireReadingStatus(id = "rs1", userId = "u1", bookId = "b1", status = "Completed")
-            ).await()
+            val readingStatuses = listOf(
+                FireReadingStatus(id = "rs1", userId = "u1", bookId = "b1", status = "Completed"),
+                FireReadingStatus(id = "rs2", userId = "u1", bookId = "b3", status = "To Read"),
+                FireReadingStatus(id = "rs3", userId = "u1", bookId = "b4", status = "Reading"),
+                FireReadingStatus(id = "rs4", userId = "u1", bookId = "b5", status = "Reading"),
+                FireReadingStatus(id = "rs5", userId = "u1", bookId = "b7", status = "To Read"),
+                FireReadingStatus(id = "rs6", userId = "u1", bookId = "b8", status = "Completed")
+            )
+            readingStatuses.forEach { db.collection("reading_statuses").document(it.id).set(it).await() }
 
             // 8. Explore Images
             val exploreUrls = listOf(
@@ -348,6 +367,7 @@ object FirestoreService {
                 val bookId = doc.getString("bookId") ?: ""
                 val status = doc.getString("status") ?: "To Read"
                 val createdAt = doc.getTimestamp("createdAt")?.toDate()?.time ?: System.currentTimeMillis()
+                val booklistId = doc.getString("booklistId")
 
                 val fireBook = booksMap[bookId]
                 val isLiked = userLikedTableIds.contains(id)
@@ -356,7 +376,7 @@ object FirestoreService {
                 val totalLikes = likesCountMap[id] ?: 0
                 val totalComments = commentsCountMap[id] ?: 0
 
-                if (fireBook != null) {
+                if (fireBook != null && booklistId.isNullOrEmpty()) {
                     val book = Book(
                         id = fireBook.id,
                         title = fireBook.title,
@@ -385,6 +405,60 @@ object FirestoreService {
                         likesCount = totalLikes,
                         commentsCount = totalComments
                     ))
+                } else if (!booklistId.isNullOrEmpty()) {
+                    // Try to fetch booklist
+                    // It will rely on syncMockData's sampleBookLists to later resolve, or we fetch here
+                    val listDoc = try { db.collection("booklists").document(booklistId).get().await() } catch (e: Exception) { null }
+                    if (listDoc != null && listDoc.exists()) {
+                        val fireList = listDoc.toObject(FireBookList::class.java)
+                        if (fireList != null) {
+                            val booksInList = mutableListOf<Book>()
+                            val junctionSnap = try { db.collection("booklist_books").whereEqualTo("booklistId", fireList.id).get().await() } catch(e: Exception) { null }
+                            junctionSnap?.documents?.forEach { jDoc ->
+                                val bId = jDoc.getString("bookId")
+                                booksMap[bId]?.let { fb -> 
+                                    booksInList.add(Book(
+                                        id = fb.id, title = fb.title, author = fb.author, coverUrl = fb.coverUrl
+                                    ))
+                                }
+                            }
+                            val loadedList = BookList(
+                                id = fireList.id,
+                                userId = fireList.userId,
+                                name = fireList.name,
+                                description = fireList.description,
+                                coverUrl = booksInList.firstOrNull()?.coverUrl ?: "",
+                                isPrivate = fireList.isPrivate,
+                                likesCount = 0,
+                                isLiked = false,
+                                isSaved = false,
+                                createdAt = fireList.createdAt.toDate().time,
+                                books = booksInList
+                            )
+                            val dummyBook = Book(
+                                id = loadedList.id,
+                                title = loadedList.name,
+                                author = "List by author",
+                                coverUrl = loadedList.coverUrl,
+                                genre = "Booklist"
+                            )
+                            posts.add(Post(
+                                id = id,
+                                userId = userId,
+                                book = dummyBook,
+                                status = status,
+                                rating = rating,
+                                review = description,
+                                createdAt = createdAt,
+                                isLiked = isLiked,
+                                isSaved = isSaved, // wait, booklist post can't be saved
+                                likesCount = totalLikes,
+                                commentsCount = totalComments,
+                                isBooklistPost = true,
+                                booklist = loadedList
+                            ))
+                        }
+                    }
                 }
             }
             Log.d(TAG, "getFeed loaded ${posts.size} posts successfully")
@@ -671,6 +745,31 @@ object FirestoreService {
         }
     }
 
+    suspend fun toggleBookSave(bookId: String, userId: String): Boolean {
+        return try {
+            val saveRef = db.collection("saves")
+                .whereEqualTo("userId", userId)
+                .whereEqualTo("tableId", bookId)
+                .get().await()
+
+            if (saveRef.isEmpty) {
+                val newSave = FireSave(
+                    id = "save_${userId}_${bookId}",
+                    userId = userId,
+                    tableId = bookId,
+                    createdAt = Timestamp.now()
+                )
+                db.collection("saves").document(newSave.id).set(newSave).await()
+            } else {
+                db.collection("saves").document(saveRef.documents[0].id).delete().await()
+            }
+            true
+        } catch (e: Exception) {
+            Log.e(TAG, "Error toggling book save", e)
+            false
+        }
+    }
+
     suspend fun toggleBookListSave(listId: String, userId: String): Boolean {
         return try {
             val saveRef = db.collection("saves")
@@ -763,7 +862,8 @@ object FirestoreService {
                 "userId" to post.userId,
                 "description" to post.review,
                 "rating" to post.rating.toDouble(),
-                "bookId" to post.book.id,
+                "bookId" to if (post.isBooklistPost) "" else post.book.id,
+                "booklistId" to if (post.isBooklistPost) post.booklist?.id else null,
                 "status" to post.status,
                 "createdAt" to Timestamp.now(),
                 "updatedAt" to Timestamp.now()
@@ -801,7 +901,7 @@ object FirestoreService {
             val id = "bl_${System.currentTimeMillis()}"
             val fireList = FireBookList(id = id, name = name, description = description, userId = userId, isPrivate = isPrivate)
             db.collection("booklists").document(id).set(fireList).await()
-            BookList(id = id, userId = userId, name = name, description = description, coverUrl = "", isPrivate = isPrivate, books = mutableListOf())
+            BookList(id = id, userId = userId, name = name, description = description, coverUrl = "", isPrivate = isPrivate, createdAt = fireList.createdAt.toDate().time, books = mutableListOf())
         } catch (e: Exception) {
             Log.e(TAG, "Error creating book list", e)
             null
@@ -903,6 +1003,18 @@ object FirestoreService {
                 Log.d(TAG, "Cannot delete book $bookId — user has posts referencing it")
                 return false
             }
+            
+            // Check if this book is in any of the user's booklists
+            val listsSnap = db.collection("booklists").whereEqualTo("userId", userId).get().await()
+            val userListIds = listsSnap.documents.map { it.id }
+            if (userListIds.isNotEmpty()) {
+                val junctionsSnap = db.collection("booklist_books").whereEqualTo("bookId", bookId).get().await()
+                val isInUserList = junctionsSnap.documents.any { it.getString("booklistId") in userListIds }
+                if (isInUserList) {
+                    Log.d(TAG, "Cannot delete book $bookId — it is present in one of the user's booklists")
+                    return false
+                }
+            }
             val rsSnap = db.collection("reading_statuses")
                 .whereEqualTo("userId", userId)
                 .whereEqualTo("bookId", bookId)
@@ -928,10 +1040,40 @@ object FirestoreService {
                 val listsSnapDef = async { db.collection("booklists").get().await() }
                 val exploreSnapDef = async { db.collection("explore_images").get().await() }
                 val statusesDef = async { getReadingStatuses() }
+                val allUsersDef = async { db.collection("users").get().await() }
 
-                val books = booksDef.await()
+                val userSavesSnapInitial = db.collection("saves").whereEqualTo("userId", "u1").get().await()
+                val userSavedIdsInitial = userSavesSnapInitial.documents.mapNotNull { it.getString("tableId") }.toSet()
+                
+                // We need the actual booklist IDs first to separate book saves from booklist saves
+                val listsSnapEarly = listsSnapDef.await()
+                val fireListsEarly = listsSnapEarly.toObjects(FireBookList::class.java)
+                val allListIdSet = fireListsEarly.map { it.id }.toSet()
+                
+                // Book saves = saved IDs that are NOT a booklist ID
+                val savedBookIds = userSavedIdsInitial.filter { !allListIdSet.contains(it) }.toSet()
+
+                val books = booksDef.await().map { it.copy(isSaved = savedBookIds.contains(it.id)) }
                 MockData.sampleBooks.clear()
                 MockData.sampleBooks.addAll(books)
+
+                val allUsersSnap = allUsersDef.await()
+                val fireUsers = allUsersSnap.toObjects(FireUser::class.java)
+                MockData.sampleUsers.clear()
+                MockData.sampleUsers.addAll(fireUsers.map { fu ->
+                    User(
+                        id = fu.id,
+                        username = fu.username,
+                        fullName = "${fu.name} ${fu.surname}",
+                        avatarUrl = fu.avatarUrl,
+                        bio = fu.bio,
+                        location = fu.location,
+                        joinDate = "",
+                        followingCount = 0,
+                        followersCount = 0,
+                        favoriteBooks = emptyList()
+                    )
+                })
 
                 val posts = postsDef.await()
                 MockData.feedPosts.clear()
@@ -942,8 +1084,8 @@ object FirestoreService {
                     MockData.currentUser = user
                 }
 
-                val listsSnap = listsSnapDef.await()
-                val fireLists = listsSnap.toObjects(FireBookList::class.java)
+                val listsSnap = listsSnapEarly
+                val fireLists = fireListsEarly
                 
                 // Optimization: fetch likes and saves for current user
                 val currentUserId = "u1"
@@ -959,12 +1101,11 @@ object FirestoreService {
 
                 MockData.sampleBookLists.clear()
                 
-                // Fetch all unique list IDs that are either owned, public, or saved by user
-                val savedListIds = userSavedIds.filter { it.startsWith("bl_") }.toSet()
+                // All booklist IDs loaded from Firestore
+                val allListIds = fireLists.map { it.id }.toSet()
                 
-                // We need to fetch lists that are saved by the user but not necessarily owned or public in the first snap
-                // Actually, the listsSnap has all lists. In a real app we'd filter, but here it seems it fetches all.
-                // Let's refine the lists fetching if needed. For now, assume listsSnap contains everything we might need.
+                // IDs saved by the user that correspond to a real booklist
+                val savedListIds = userSavedIds.filter { allListIds.contains(it) }.toSet()
                 
                 fireLists.forEach { fl ->
                     val isOwner = fl.userId == currentUserId
@@ -989,6 +1130,7 @@ object FirestoreService {
                             likesCount = listLikesCount[fl.id] ?: 0,
                             isLiked = userLikedIds.contains(fl.id),
                             isSaved = isSaved,
+                            createdAt = fl.createdAt.toDate().time,
                             books = booksInList
                         ))
                     }
@@ -1003,9 +1145,10 @@ object FirestoreService {
                 MockData.readingStatuses.clear()
                 MockData.readingStatuses.addAll(statuses)
 
-                // Harmonization (Dune Bug Fix):
+                // Harmonization:
                 // If a post exists but the book isn't formally on the user's shelf, add it organically to the shelf.
-                MockData.feedPosts.forEach { post ->
+                // Skip booklist type posts — their book is a dummy and should never go to the shelf.
+                MockData.feedPosts.filter { !it.isBooklistPost }.forEach { post ->
                     val onShelf = MockData.readingStatuses.any { it.userId == post.userId && it.book.id == post.book.id }
                     if (!onShelf) {
                         val generatedStatus = ReadingStatus(

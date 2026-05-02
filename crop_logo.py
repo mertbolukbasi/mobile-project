@@ -17,5 +17,5 @@ def crop_for_topbar(image_path, output_path):
     icon_part.save(output_path, "PNG")
     print(f"Icon saved to {output_path}")
 
-crop_for_topbar('/Users/ramazanbirkan/Desktop/Mobile_Application/app/src/main/res/drawable/ic_splash_logo.png', 
-                '/Users/ramazanbirkan/Desktop/Mobile_Application/app/src/main/res/drawable/ic_paginex_icon.png')
+crop_for_topbar('/home/burak/Desktop/mobile-project/app/src/main/res/drawable/ic_splash_logo.png', 
+                '/home/burak/Desktop/mobile-project/app/src/main/res/drawable/ic_paginex_icon.png')

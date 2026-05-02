@@ -20,5 +20,5 @@ def super_clean(image_path):
     img.putdata(new_data)
     img.save(image_path, "PNG")
 
-super_clean('/Users/ramazanbirkan/Desktop/Mobile_Application/app/src/main/res/drawable/ic_splash_logo.png')
+super_clean('/home/burak/Desktop/mobile-project/app/src/main/res/drawable/ic_paginex_icon.png')
 print("Super clean pass done")

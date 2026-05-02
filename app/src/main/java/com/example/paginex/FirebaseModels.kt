@@ -26,7 +26,8 @@ data class FireUser(
 data class FirePost(
     val id: String = "",
     val userId: String = "",
-    val bookId: String = "",
+    val bookId: String = "", // Used for normal book posts
+    val booklistId: String? = null, // Used for booklist posts
     val description: String = "",
     val rating: Double = 0.0,
     val status: String = "Okunacak",

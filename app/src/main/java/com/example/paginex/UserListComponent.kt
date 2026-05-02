@@ -33,7 +33,6 @@ fun UserListSheet(
     onDismiss: () -> Unit
 ) {
     val users = remember { mutableStateListOf<FireUser>() }
-    val scope = rememberCoroutineScope()
 
     LaunchedEffect(title, targetUserId) {
         val fetchedUsers = if (title == "Followers") {
@@ -127,7 +126,6 @@ fun UserLibrarySheet(
     val library = remember(targetUserId, MockData.readingStatuses.size, MockData.readingStatuses.toList()) {
         MockData.readingStatuses.filter { it.userId == targetUserId }.sortedByDescending { it.addedAt }
     }
-    val scope = rememberCoroutineScope()
     var deleteError by remember { mutableStateOf<String?>(null) }
 
     ModalBottomSheet(
@@ -184,7 +182,7 @@ fun UserLibrarySheet(
                                     if (success) {
                                         MockData.readingStatuses.removeAll { it.userId == targetUserId && it.book.id == status.book.id }
                                     } else {
-                                        deleteError = "Cannot delete \"${status.book.title}\" — you have posts about this book."
+                                        deleteError = "Cannot delete \"${status.book.title}\" — you have posts or it is in a booklist."
                                     }
                                 }
                             }
@@ -326,6 +324,82 @@ fun LibrarySelectorSheet(
                     items(filteredLibrary, key = { it.id }) { status ->
                         Box(modifier = Modifier.clickable { onBookSelected(status) }) {
                             LibraryBookItem(status)
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun BookListSelectorSheet(
+    targetUserId: String,
+    onDismiss: () -> Unit,
+    onListSelected: (BookList) -> Unit
+) {
+    var searchQuery by remember { mutableStateOf("") }
+    val bookLists = remember(targetUserId, MockData.sampleBookLists.size) {
+        MockData.sampleBookLists.filter { it.userId == targetUserId }
+    }
+    
+    val filteredLists = bookLists.filter { 
+        it.name.contains(searchQuery, ignoreCase = true) 
+    }.sortedByDescending { it.createdAt }
+
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        containerColor = PaginexGalaxy,
+        dragHandle = { BottomSheetDefaults.DragHandle(color = PaginexGlassBorder) }
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxHeight(0.85f)
+                .padding(horizontal = 20.dp)
+        ) {
+            Text(
+                "Select a Book List",
+                style = MaterialTheme.typography.titleLarge,
+                color = PaginexWhite,
+                fontWeight = FontWeight.Bold
+            )
+            Spacer(modifier = Modifier.height(16.dp))
+
+            OutlinedTextField(
+                value = searchQuery,
+                onValueChange = { searchQuery = it },
+                modifier = Modifier.fillMaxWidth().padding(bottom = 16.dp),
+                placeholder = { Text("Search your lists...", color = Color.Gray) },
+                colors = OutlinedTextFieldDefaults.colors(
+                    focusedBorderColor = PaginexNeonPurple,
+                    unfocusedBorderColor = PaginexGlassBorder,
+                    focusedTextColor = PaginexWhite,
+                    unfocusedTextColor = PaginexWhite
+                ),
+                shape = RoundedCornerShape(12.dp)
+            )
+
+            if (filteredLists.isEmpty()) {
+                Box(modifier = Modifier.fillMaxWidth().weight(1f), contentAlignment = Alignment.Center) {
+                    Text("No book lists found.", color = Color.Gray, fontSize = 14.sp)
+                }
+            } else {
+                LazyColumn(
+                    verticalArrangement = Arrangement.spacedBy(16.dp),
+                    contentPadding = PaddingValues(bottom = 32.dp),
+                    modifier = Modifier.weight(1f)
+                ) {
+                    items(filteredLists, key = { it.id }) { list ->
+                        Box(modifier = Modifier.clickable { onListSelected(list) }) {
+                            BookListCard(
+                                bookList = list,
+                                isOwner = false,
+                                onListClick = { onListSelected(list) },
+                                onAddBook = { },
+                                onLikeClick = { },
+                                onSaveClick = { }
+                            )
                         }
                     }
                 }

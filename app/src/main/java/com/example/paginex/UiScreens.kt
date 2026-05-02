@@ -237,7 +237,8 @@ fun PaginexApp() {
                 onEditClick = { navController.navigate(Screen.Settings.route) },
                 onListsClick = { navController.navigate("book_lists/${MockData.currentUser.id.ifEmpty { "u1" }}") },
                 onConstellationClick = { navController.navigate("constellation/${MockData.currentUser.id.ifEmpty { "u1" }}") },
-                onBookClick = { postId -> navController.navigate("detail/$postId?ownerOnly=true") }
+                onBookClick = { postId -> navController.navigate("detail/$postId?ownerOnly=true") },
+                onLogoutClick = { navController.navigate(Screen.Login.route) { popUpTo(0) } }
             ) }
             composable(Screen.EditProfile.route) { EditProfileScreen { navController.popBackStack() } }
             composable(
@@ -292,6 +293,7 @@ fun PaginexApp() {
             }
         }
     }
+
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -451,6 +453,7 @@ fun UserGalaxy(
             }
         }
     }
+
 }
 
 // --- SCREENS ---
@@ -582,19 +585,20 @@ fun PaginexHomeScreen(
     var isRefreshing by remember { mutableStateOf(false) }
     var refreshTrigger by remember { mutableStateOf(0) }
     LaunchedEffect(refreshTrigger) {
-        if (refreshTrigger > 0) {
-            isRefreshing = true
+        isRefreshing = true
             FirestoreService.syncMockData()
             isRefreshing = false
-            listState.animateScrollToItem(0)
-        }
+            listState.scrollToItem(0)
+    }
+
+    LaunchedEffect(currentSortMode, isAscending) {
+        listState.scrollToItem(0)
     }
 
     val posts = when (currentSortMode) {
         "A-Z" -> if (isAscending) MockData.feedPosts.sortedBy { it.book.title } else MockData.feedPosts.sortedByDescending { it.book.title }
         "Rating" -> {
-            val oneMonthAgo = System.currentTimeMillis() - (30L * 24 * 60 * 60 * 1000)
-            val recentPuanPosts = MockData.feedPosts.filter { it.createdAt >= oneMonthAgo && it.rating > 0f }
+            MockData.feedPosts.filter { it.rating > 0f }
                 .let { filtered ->
                     if (isAscending) {
                         filtered.sortedWith(compareBy<Post> { it.rating }.thenByDescending { it.createdAt })
@@ -602,19 +606,6 @@ fun PaginexHomeScreen(
                         filtered.sortedWith(compareByDescending<Post> { it.rating }.thenByDescending { it.createdAt })
                     }
                 }
-            
-            if (recentPuanPosts.isEmpty()) {
-                MockData.feedPosts.filter { it.rating > 0f }
-                    .let { filtered ->
-                        if (isAscending) {
-                            filtered.sortedWith(compareBy<Post> { it.rating }.thenByDescending { it.createdAt })
-                        } else {
-                            filtered.sortedWith(compareByDescending<Post> { it.rating }.thenByDescending { it.createdAt })
-                        }
-                    }
-            } else {
-                recentPuanPosts
-            }
         }
         else -> if (isAscending) MockData.feedPosts.sortedBy { it.createdAt } else MockData.feedPosts.sortedByDescending { it.createdAt }
     }
@@ -648,56 +639,6 @@ fun PaginexHomeScreen(
                     val toggleTheme = LocalThemeToggle.current
                     val isDark = LocalIsDarkTheme.current
                     
-                    // Sort Order Toggle
-                    IconButton(onClick = { isAscending = !isAscending }) {
-                        Icon(
-                            imageVector = if (isAscending) Icons.Default.ArrowUpward else Icons.Default.ArrowDownward,
-                            contentDescription = "Sort Order",
-                            tint = PaginexNeonTeal
-                        )
-                    }
-
-                    // Sort/Filter Menu
-                    Box {
-                        IconButton(onClick = { showSortMenu = true }) {
-                            Icon(Icons.Default.FilterList, contentDescription = "Sort Options", tint = PaginexNeonPurple)
-                        }
-                        DropdownMenu(
-                            expanded = showSortMenu,
-                            onDismissRequest = { showSortMenu = false },
-                            modifier = Modifier.background(PaginexGalaxy)
-                        ) {
-                            val options = listOf("Latest", "A-Z", "Rating")
-                            options.forEach { option ->
-                                DropdownMenuItem(
-                                    text = { 
-                                        Text(
-                                            text = option, 
-                                            color = if (currentSortMode == option) PaginexNeonPurple else PaginexWhite,
-                                            fontWeight = if (currentSortMode == option) FontWeight.Bold else FontWeight.Normal
-                                        ) 
-                                    },
-                                    onClick = {
-                                        currentSortMode = option
-                                        showSortMenu = false
-                                        // Auto-set direction for better UX
-                                        isAscending = when(option) {
-                                            "Latest" -> false
-                                            "A-Z" -> true
-                                            "Rating" -> false
-                                            else -> false
-                                        }
-                                    },
-                                    leadingIcon = {
-                                        if (currentSortMode == option) {
-                                            Icon(Icons.Default.Check, null, tint = PaginexNeonPurple, modifier = Modifier.size(18.dp))
-                                        }
-                                    }
-                                )
-                            }
-                        }
-                    }
-
                     IconButton(onClick = toggleTheme) {
                         Text(if (isDark) "🌞" else "🌙", fontSize = 20.sp)
                     }
@@ -707,6 +648,65 @@ fun PaginexHomeScreen(
         }
     ) { padding ->
         Column(modifier = Modifier.fillMaxSize().padding(padding)) {
+            // Sort Order and Filter Menu newly placed below the logo
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 2.dp),
+                horizontalArrangement = Arrangement.End,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                // Sort Order Toggle
+                IconButton(onClick = { isAscending = !isAscending }) {
+                    Icon(
+                        imageVector = if (isAscending) Icons.Default.ArrowUpward else Icons.Default.ArrowDownward,
+                        contentDescription = "Sort Order",
+                        tint = PaginexNeonTeal
+                    )
+                }
+
+                Spacer(modifier = Modifier.width(8.dp))
+
+                // Sort/Filter Menu
+                Box {
+                    IconButton(onClick = { showSortMenu = true }) {
+                        Icon(Icons.Default.FilterList, contentDescription = "Sort Options", tint = PaginexNeonPurple)
+                    }
+                    DropdownMenu(
+                        expanded = showSortMenu,
+                        onDismissRequest = { showSortMenu = false },
+                        modifier = Modifier.background(PaginexGalaxy)
+                    ) {
+                        val options = listOf("Latest", "A-Z", "Rating")
+                        options.forEach { option ->
+                            DropdownMenuItem(
+                                text = { 
+                                    Text(
+                                        text = option, 
+                                        color = if (currentSortMode == option) PaginexNeonPurple else PaginexWhite,
+                                        fontWeight = if (currentSortMode == option) FontWeight.Bold else FontWeight.Normal
+                                    ) 
+                                },
+                                onClick = {
+                                    currentSortMode = option
+                                    showSortMenu = false
+                                    // Auto-set direction for better UX
+                                    isAscending = when(option) {
+                                        "Latest" -> false
+                                        "A-Z" -> true
+                                        "Rating" -> false
+                                        else -> false
+                                    }
+                                },
+                                leadingIcon = {
+                                    if (currentSortMode == option) {
+                                        Icon(Icons.Default.Check, null, tint = PaginexNeonPurple, modifier = Modifier.size(18.dp))
+                                    }
+                                }
+                            )
+                        }
+                    }
+                }
+            }
+
             androidx.compose.material3.pulltorefresh.PullToRefreshBox(
                 isRefreshing = isRefreshing,
                 onRefresh = { refreshTrigger++ },
@@ -786,11 +786,15 @@ fun PaginexHomeScreen(
             }
         }
     }
+
 }
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun ExploreScreen(onBookClick: (String) -> Unit = {}) {
+    var selectedListForDetails by remember { mutableStateOf<BookList?>(null) }
+    var searchQuery by remember { mutableStateOf("") }
+    var searchType by remember { mutableStateOf("Kitaplar") }
     val infiniteTransition = rememberInfiniteTransition()
     val nebulaOffset by infiniteTransition.animateFloat(
         initialValue = 0f,
@@ -847,8 +851,8 @@ fun ExploreScreen(onBookClick: (String) -> Unit = {}) {
                 Spacer(modifier = Modifier.height(16.dp))
                 // Minimalist Search Bar
                 OutlinedTextField(
-                    value = "",
-                    onValueChange = {},
+                    value = searchQuery,
+                    onValueChange = { searchQuery = it },
                     modifier = Modifier.fillMaxWidth().height(48.dp),
                     placeholder = { Text("Search in stardust...", color = Color.Gray, fontSize = 14.sp) },
                     leadingIcon = { Icon(Icons.Default.Search, null, tint = PaginexWhite.copy(alpha = 0.5f), modifier = Modifier.size(20.dp)) },
@@ -865,86 +869,59 @@ fun ExploreScreen(onBookClick: (String) -> Unit = {}) {
         
         Spacer(modifier = Modifier.height(16.dp))
 
-        // Discover Lists Section
-        val publicLists = remember(MockData.sampleBookLists.size) {
-            MockData.sampleBookLists.filter { !it.isPrivate && it.userId != "u1" }
-        }
-        if (publicLists.isNotEmpty()) {
-            Text(
-                "Popular Galaxies",
-                modifier = Modifier.padding(horizontal = 24.dp),
-                color = PaginexWhite,
-                fontWeight = FontWeight.Bold,
-                fontSize = 18.sp
-            )
-            LazyRow(
-                contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp),
-                horizontalArrangement = Arrangement.spacedBy(16.dp)
-            ) {
-                items(publicLists) { list ->
-                    Box(modifier = Modifier.width(200.dp)) {
-                        BookListCard(
-                            bookList = list,
-                            isOwner = false,
-                            onAddBook = {},
-                            onLikeClick = {
-                                val idx = MockData.sampleBookLists.indexOfFirst { it.id == list.id }
-                                if (idx != -1) {
-                                    val current = MockData.sampleBookLists[idx]
-                                    val newIsLiked = !current.isLiked
-                                    MockData.sampleBookLists[idx] = current.copy(
-                                        isLiked = newIsLiked,
-                                        likesCount = if (newIsLiked) current.likesCount + 1 else (current.likesCount - 1).coerceAtLeast(0)
-                                    )
-                                    kotlinx.coroutines.MainScope().launch {
-                                        FirestoreService.toggleBookListLike(list.id, "u1")
-                                    }
-                                }
-                            },
-                            onSaveClick = {
-                                val idx = MockData.sampleBookLists.indexOfFirst { it.id == list.id }
-                                if (idx != -1) {
-                                    val current = MockData.sampleBookLists[idx]
-                                    MockData.sampleBookLists[idx] = current.copy(isSaved = !current.isSaved)
-                                    kotlinx.coroutines.MainScope().launch {
-                                        FirestoreService.toggleBookListSave(list.id, "u1")
-                                    }
-                                }
-                            }
-                        )
-                    }
-                }
-            }
-            Spacer(modifier = Modifier.height(16.dp))
-        }
+        // Discover Lists Section removed per user request
 
-        // Genre Categories
-        val genres = listOf("All", "Sci-Fi", "Dystopia", "Classic", "Novel", "History", "Mystery", "Art")
-        var selectedGenre by remember { mutableStateOf("All") }
-        
-        LazyRow(
-            contentPadding = PaddingValues(horizontal = 16.dp),
-            horizontalArrangement = Arrangement.spacedBy(10.dp),
-            modifier = Modifier.padding(bottom = 16.dp)
+        // Search Type Toggles
+        val searchTypes = listOf("Kitaplar", "Kullanıcılar")
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
+            horizontalArrangement = Arrangement.spacedBy(24.dp)
         ) {
-            items(genres) { genre ->
-                GenreChip(
-                    genre = genre,
-                    isSelected = genre == selectedGenre,
-                    onClick = { selectedGenre = genre }
+            searchTypes.forEach { type ->
+                Text(
+                    text = type,
+                    color = if (searchType == type) PaginexNeonPurple else Color.Gray,
+                    fontWeight = if (searchType == type) FontWeight.Bold else FontWeight.Normal,
+                    fontSize = 18.sp,
+                    modifier = Modifier.clickable { searchType = type }
                 )
             }
         }
 
-        // Dynamic Staggered Grid
-        LazyVerticalStaggeredGrid(
-            columns = StaggeredGridCells.Fixed(2),
-            modifier = Modifier.fillMaxSize().padding(horizontal = 8.dp),
-            contentPadding = PaddingValues(8.dp),
-            horizontalArrangement = Arrangement.spacedBy(12.dp),
-            verticalItemSpacing = 12.dp
-        ) {
-            items(MockData.sampleBooks) { book ->
+        if (searchType == "Kitaplar") {
+            // Genre Categories
+            val genres = listOf("All", "Sci-Fi", "Dystopia", "Classic", "Novel", "History", "Mystery", "Art")
+            var selectedGenre by remember { mutableStateOf("All") }
+            
+            LazyRow(
+                contentPadding = PaddingValues(horizontal = 16.dp),
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                modifier = Modifier.padding(bottom = 16.dp)
+            ) {
+                items(genres) { genre ->
+                    GenreChip(
+                        genre = genre,
+                        isSelected = genre == selectedGenre,
+                        onClick = { selectedGenre = genre }
+                    )
+                }
+            }
+    
+            val filteredBooks = MockData.sampleBooks.filter { 
+                it.genre != "Booklist" &&
+                (selectedGenre == "All" || it.genre == selectedGenre) &&
+                it.title.contains(searchQuery, ignoreCase = true)
+            }
+    
+            // Dynamic Staggered Grid
+            LazyVerticalStaggeredGrid(
+                columns = StaggeredGridCells.Fixed(2),
+                modifier = Modifier.fillMaxSize().padding(horizontal = 8.dp),
+                contentPadding = PaddingValues(8.dp),
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                verticalItemSpacing = 12.dp
+            ) {
+                items(filteredBooks, key = { it.id }) { book ->
                 val randomHeight = remember { (200..350).random().dp }
                 Box(
                     modifier = Modifier
@@ -954,7 +931,7 @@ fun ExploreScreen(onBookClick: (String) -> Unit = {}) {
                         .background(PaginexGlass)
                         .border(1.dp, PaginexGlassBorder, RoundedCornerShape(24.dp))
                         .clickable { 
-                            val post = MockData.feedPosts.find { it.book.title == book.title }
+                            val post = MockData.feedPosts.find { it.book.title == book.title && !it.isBooklistPost }
                             post?.let { onBookClick(it.id) }
                         }
                 ) {
@@ -985,15 +962,70 @@ fun ExploreScreen(onBookClick: (String) -> Unit = {}) {
                         overflow = TextOverflow.Ellipsis
                     )
                 }
+                }
+            }
+        } else {
+            val filteredUsers = MockData.sampleUsers.filter {
+                it.username.contains(searchQuery, ignoreCase = true) || 
+                it.fullName.contains(searchQuery, ignoreCase = true)
+            }
+            
+            LazyColumn(
+                modifier = Modifier.fillMaxSize().padding(horizontal = 16.dp),
+                verticalArrangement = Arrangement.spacedBy(16.dp),
+                contentPadding = PaddingValues(bottom = 32.dp)
+            ) {
+                if (filteredUsers.isEmpty()) {
+                    item {
+                        Text("No users found.", color = Color.Gray, modifier = Modifier.padding(16.dp))
+                    }
+                }
+                items(filteredUsers, key = { it.id }) { user ->
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(12.dp))
+                            .background(PaginexGlass)
+                            .border(1.dp, PaginexGlassBorder, RoundedCornerShape(12.dp))
+                            .padding(12.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        AsyncImage(
+                            model = user.avatarUrl.ifEmpty { "https://via.placeholder.com/150" },
+                            contentDescription = null,
+                            modifier = Modifier.size(50.dp).clip(CircleShape).border(2.dp, PaginexNeonPurple, CircleShape),
+                            contentScale = ContentScale.Crop
+                        )
+                        Spacer(modifier = Modifier.width(16.dp))
+                        Column {
+                            Text(user.fullName, color = PaginexWhite, fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                            Text("@${user.username}", color = Color.Gray, fontSize = 14.sp)
+                        }
+                    }
+                }
             }
         }
+    }
+
+    selectedListForDetails?.let { list ->
+        BookListDetailsDialog(
+            bookList = list,
+            isOwner = false,
+            onDismiss = { selectedListForDetails = null },
+            onRemoveBookClick = {}
+        )
     }
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun BookDetailScreen(postId: String?, ownerOnly: Boolean = false, onBack: () -> Unit) {
-    val initialPost = MockData.feedPosts.find { it.id == postId } ?: MockData.feedPosts.firstOrNull() ?: return
+    var selectedListForDetails by remember { mutableStateOf<BookList?>(null) }
+    val foundBook = MockData.sampleBooks.find { it.id == postId }
+    val initialPost = MockData.feedPosts.find { it.id == postId || it.book.id == postId } 
+        ?: (if (foundBook != null) Post(id = "dummy", userId = "system", book = foundBook, status = "Read", rating = 0f, review = "No posts yet.", createdAt = 0L) else null)
+        ?: MockData.feedPosts.firstOrNull() 
+        ?: return
     val book = initialPost.book
     val bookReviews = MockData.feedPosts.filter { 
         it.book.id == book.id && (!ownerOnly || it.userId == "u1")
@@ -1050,13 +1082,20 @@ fun BookDetailScreen(postId: String?, ownerOnly: Boolean = false, onBack: () -> 
                 Text(String.format("%.1f/10", avgRating), color = Color(0xFFFFD700), fontSize = 14.sp, fontWeight = FontWeight.Bold)
                 
                 Spacer(modifier = Modifier.weight(1f))
-                
-                var isSaved by remember { mutableStateOf(false) }
-                IconButton(onClick = { isSaved = !isSaved }) {
+
+                val bookIdx = MockData.sampleBooks.indexOfFirst { it.id == book.id }
+                val isBookSaved = if (bookIdx != -1) MockData.sampleBooks[bookIdx].isSaved else false
+                val saveScope = rememberCoroutineScope()
+                IconButton(onClick = {
+                    if (bookIdx != -1) {
+                        MockData.sampleBooks[bookIdx] = MockData.sampleBooks[bookIdx].copy(isSaved = !isBookSaved)
+                        saveScope.launch { FirestoreService.toggleBookSave(book.id, "u1") }
+                    }
+                }) {
                     Icon(
-                        imageVector = if (isSaved) Icons.Default.Bookmark else Icons.Default.BookmarkBorder,
+                        imageVector = if (isBookSaved) Icons.Default.Bookmark else Icons.Default.BookmarkBorder,
                         contentDescription = "Save Book",
-                        tint = if (isSaved) PaginexNeonPurple else Color.Gray
+                        tint = if (isBookSaved) PaginexNeonPurple else Color.Gray
                     )
                 }
             }
@@ -1119,8 +1158,65 @@ fun BookDetailScreen(postId: String?, ownerOnly: Boolean = false, onBack: () -> 
                     }
                 }
             }
+            
+            // Booklists made for this book
+            Spacer(modifier = Modifier.height(32.dp))
+            val listsWithBook = MockData.sampleBookLists.filter { list -> list.books.any { it.id == book.id } }
+            if (listsWithBook.isNotEmpty()) {
+                Text("Kitap İnfografisinde Yapılan Booklistler", color = PaginexWhite, fontSize = 18.sp, fontWeight = FontWeight.Bold)
+                Spacer(modifier = Modifier.height(16.dp))
+                LazyRow(
+                    contentPadding = PaddingValues(horizontal = 0.dp),
+                    horizontalArrangement = Arrangement.spacedBy(16.dp)
+                ) {
+                    items(listsWithBook, key = { it.id }) { list ->
+                        Box(modifier = Modifier.width(280.dp).padding(end = 4.dp)) {
+                            BookListCard(
+                                bookList = list,
+                                isOwner = list.userId == MockData.currentUser.id.ifEmpty { "u1" },
+                                onListClick = { selectedListForDetails = list },
+                                onAddBook = {},
+                                onLikeClick = {
+                                    val idx = MockData.sampleBookLists.indexOfFirst { it.id == list.id }
+                                    if (idx != -1) {
+                                        val current = MockData.sampleBookLists[idx]
+                                        val newIsLiked = !current.isLiked
+                                        MockData.sampleBookLists[idx] = current.copy(
+                                            isLiked = newIsLiked,
+                                            likesCount = if (newIsLiked) current.likesCount + 1 else (current.likesCount - 1).coerceAtLeast(0)
+                                        )
+                                        kotlinx.coroutines.MainScope().launch {
+                                            FirestoreService.toggleBookListLike(list.id, "u1")
+                                        }
+                                    }
+                                },
+                                onSaveClick = {
+                                    val idx = MockData.sampleBookLists.indexOfFirst { it.id == list.id }
+                                    if (idx != -1) {
+                                        val current = MockData.sampleBookLists[idx]
+                                        MockData.sampleBookLists[idx] = current.copy(isSaved = !current.isSaved)
+                                        kotlinx.coroutines.MainScope().launch {
+                                            FirestoreService.toggleBookListSave(list.id, "u1")
+                                        }
+                                    }
+                                }
+                            )
+                        }
+                    }
+                }
+            }
         }
     }
+
+    selectedListForDetails?.let { list ->
+        BookListDetailsDialog(
+            bookList = list,
+            isOwner = false,
+            onDismiss = { selectedListForDetails = null },
+            onRemoveBookClick = {}
+        )
+    }
+
 }
 
 @Composable
@@ -1142,8 +1238,37 @@ fun PaginexProfileScreen(
         )
     )
     var showAddBookDialog by remember { mutableStateOf(false) }
+    var showLogoutDialog by remember { mutableStateOf(false) }
     val currentlyReading = MockData.readingStatuses.filter { it.status == "Reading" && it.userId == (MockData.currentUser.id.ifEmpty { "u1" }) }
     val scope = rememberCoroutineScope()
+
+    androidx.activity.compose.BackHandler(enabled = true) {
+        showLogoutDialog = true
+    }
+
+    if (showLogoutDialog) {
+        AlertDialog(
+            onDismissRequest = { showLogoutDialog = false },
+            title = { Text("Log Out", color = PaginexWhite, fontWeight = FontWeight.Bold) },
+            text = { Text("Profilden çıkmaktan emin misiniz?", color = Color.Gray) },
+            containerColor = PaginexGalaxy,
+            shape = RoundedCornerShape(20.dp),
+            confirmButton = {
+                Button(
+                    onClick = { showLogoutDialog = false; onLogoutClick() },
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFEF4444)),
+                    shape = RoundedCornerShape(12.dp)
+                ) { Text("Evet", color = Color.White, fontWeight = FontWeight.Bold) }
+            },
+            dismissButton = {
+                Button(
+                    onClick = { showLogoutDialog = false },
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF22C55E)),
+                    shape = RoundedCornerShape(12.dp)
+                ) { Text("Hayır", color = Color.White, fontWeight = FontWeight.Bold) }
+            }
+        )
+    }
 
     Box(modifier = Modifier.fillMaxSize().background(PaginexSpace)) {
         // Logout Icon removed, moved to Settings.
@@ -1542,6 +1667,7 @@ fun EditProfileScreen(onSave: () -> Unit) {
             }
         }
     }
+
 }
 
 @Composable
@@ -1577,8 +1703,8 @@ fun SavedPostsScreen(onBookClick: (String) -> Unit = {}) {
     var searchQuery by remember { mutableStateOf("") }
     var isAscending by remember { mutableStateOf(true) }
     
-    val uniqueBooks = MockData.feedPosts
-        .filter { it.isSaved && it.book.title.lowercase().startsWith(searchQuery.lowercase()) }
+    val uniquePosts = MockData.feedPosts
+        .filter { it.isSaved && it.book.title.contains(searchQuery, ignoreCase = true) }
         .distinctBy { it.book.id }
         .let { posts ->
             if (isAscending) posts.sortedBy { it.book.title } else posts.sortedByDescending { it.book.title }
@@ -1625,7 +1751,7 @@ fun SavedPostsScreen(onBookClick: (String) -> Unit = {}) {
             verticalArrangement = Arrangement.spacedBy(16.dp),
             contentPadding = PaddingValues(bottom = 90.dp)
         ) {
-            items(uniqueBooks) { post ->
+            items(uniquePosts, key = { it.id }) { post ->
                 CosmicPlanet(
                     book = post.book,
                     size = 120.dp,
@@ -1635,7 +1761,11 @@ fun SavedPostsScreen(onBookClick: (String) -> Unit = {}) {
             }
         }
     }
+
 }
+
+
+
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -1644,26 +1774,23 @@ fun BookListsScreen(targetUserId: String, onBack: () -> Unit) {
     val isOwner = targetUserId == currentUid
     var selectedTab by remember { mutableIntStateOf(0) }
     
-    val bookLists = remember(MockData.sampleBookLists.size, targetUserId, selectedTab) {
-        if (isOwner) {
-            if (selectedTab == 0) {
-                MockData.sampleBookLists.filter { it.userId == targetUserId }
-            } else {
-                MockData.sampleBookLists.filter { it.isSaved && it.userId != targetUserId }
-            }
+    val bookLists = if (isOwner) {
+        if (selectedTab == 0) {
+            MockData.sampleBookLists.filter { it.userId == targetUserId }
         } else {
-            // Viewing someone else's lists: only show their public ones
-            MockData.sampleBookLists.filter { it.userId == targetUserId && !it.isPrivate }
+            MockData.sampleBookLists.filter { it.isSaved }
         }
+    } else {
+        MockData.sampleBookLists.filter { it.userId == targetUserId && !it.isPrivate }
     }
     
     var showCreateDialog by remember { mutableStateOf(false) }
     var selectedListForAdd by remember { mutableStateOf<BookList?>(null) }
     var listToEdit by remember { mutableStateOf<BookList?>(null) }
+    var selectedListForDetails by remember { mutableStateOf<BookList?>(null) }
 
-    LaunchedEffect(Unit) {
-        FirestoreService.syncMockData()
-    }
+
+
 
     Scaffold(
         containerColor = PaginexSpace,
@@ -1731,6 +1858,7 @@ fun BookListsScreen(targetUserId: String, onBack: () -> Unit) {
                     BookListCard(
                         bookList = list,
                         isOwner = list.userId == currentUid,
+                        onListClick = { selectedListForDetails = list },
                         onAddBook = { selectedListForAdd = list },
                         onLikeClick = {
                             val idx = MockData.sampleBookLists.indexOfFirst { it.id == list.id }
@@ -1837,6 +1965,114 @@ fun BookListsScreen(targetUserId: String, onBack: () -> Unit) {
             }
         )
     }
+
+    selectedListForDetails?.let { list ->
+        BookListDetailsDialog(
+            bookList = list,
+            isOwner = list.userId == currentUid,
+            onDismiss = { selectedListForDetails = null },
+            onRemoveBookClick = { bookId ->
+                val idx = MockData.sampleBookLists.indexOfFirst { it.id == list.id }
+                if (idx != -1) {
+                    val current = MockData.sampleBookLists[idx]
+                    val updatedBooks = current.books.toMutableList()
+                    updatedBooks.removeAll { it.id == bookId }
+                    val updatedList = current.copy(books = updatedBooks)
+                    MockData.sampleBookLists[idx] = updatedList
+                    selectedListForDetails = updatedList // Trigger immediate recomposition
+                    kotlinx.coroutines.MainScope().launch {
+                        FirestoreService.removeBookFromList(list.id, bookId)
+                    }
+                }
+            }
+        )
+    }
+}
+
+@Composable
+fun BookListDetailsDialog(
+    bookList: BookList,
+    isOwner: Boolean,
+    onDismiss: () -> Unit,
+    onRemoveBookClick: (String) -> Unit
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        containerColor = PaginexGalaxy,
+        shape = RoundedCornerShape(24.dp),
+        title = {
+            Column {
+                Text(bookList.name, color = PaginexWhite, fontWeight = FontWeight.Bold, fontSize = 20.sp)
+                if (bookList.description.isNotEmpty()) {
+                    Text(bookList.description, color = Color.Gray, fontSize = 14.sp)
+                }
+            }
+        },
+        text = {
+            if (bookList.books.isEmpty()) {
+                Text("No books in this list.", color = Color.Gray)
+            } else {
+                LazyVerticalGrid(
+                    columns = GridCells.Fixed(3),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalArrangement = Arrangement.spacedBy(16.dp),
+                    modifier = Modifier.fillMaxWidth().heightIn(max = 400.dp)
+                ) {
+                    items(bookList.books, key = { it.id }) { book ->
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(8.dp))
+                                .background(PaginexGlass)
+                                .border(1.dp, PaginexGlassBorder, RoundedCornerShape(8.dp))
+                        ) {
+                            Column(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalAlignment = Alignment.CenterHorizontally
+                            ) {
+                                Box(
+                                    modifier = Modifier.fillMaxWidth().height(100.dp),
+                                    contentAlignment = Alignment.TopEnd
+                                ) {
+                                    AsyncImage(
+                                        model = book.coverUrl,
+                                        contentDescription = book.title,
+                                        modifier = Modifier.fillMaxSize(),
+                                        contentScale = ContentScale.Crop
+                                    )
+                                    if (isOwner) {
+                                        Box(
+                                            modifier = Modifier
+                                                .padding(4.dp)
+                                                .size(24.dp)
+                                                .background(Color.Black.copy(alpha = 0.6f), CircleShape)
+                                                .clickable { onRemoveBookClick(book.id) },
+                                            contentAlignment = Alignment.Center
+                                        ) {
+                                            Icon(Icons.Default.Close, null, tint = Color.White, modifier = Modifier.size(14.dp))
+                                        }
+                                    }
+                                }
+                                Text(
+                                    text = book.title,
+                                    color = PaginexWhite,
+                                    fontSize = 11.sp,
+                                    maxLines = 2,
+                                    modifier = Modifier.padding(6.dp),
+                                    lineHeight = 12.sp,
+                                    textAlign = TextAlign.Center
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {},
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text("Close", color = Color.Gray, fontWeight = FontWeight.Bold) }
+        }
+    )
 }
 
 @Composable
@@ -1906,6 +2142,7 @@ fun EditBookListDialog(bookList: BookList, onDismiss: () -> Unit, onSave: (Strin
 fun BookListCard(
     bookList: BookList,
     isOwner: Boolean,
+    onListClick: () -> Unit,
     onAddBook: () -> Unit,
     onLikeClick: () -> Unit = {},
     onSaveClick: () -> Unit = {},
@@ -1916,7 +2153,7 @@ fun BookListCard(
     var menuExpanded by remember { mutableStateOf(false) }
 
     Card(
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier.fillMaxWidth().clickable { onListClick() },
         shape = RoundedCornerShape(20.dp),
         colors = CardDefaults.cardColors(containerColor = PaginexGlass),
         border = BorderStroke(1.dp, PaginexGlassBorder)
@@ -1945,7 +2182,15 @@ fun BookListCard(
                 Spacer(modifier = Modifier.width(14.dp))
                 Column(modifier = Modifier.weight(1f)) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text(bookList.name, fontWeight = FontWeight.Bold, fontSize = 16.sp, color = PaginexWhite)
+                        Text(
+                            bookList.name, 
+                            fontWeight = FontWeight.Bold, 
+                            fontSize = 16.sp, 
+                            color = PaginexWhite,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.weight(1f, fill = false)
+                        )
                         Spacer(modifier = Modifier.width(8.dp))
                         Icon(
                             imageVector = if (bookList.isPrivate) Icons.Default.Lock else Icons.Default.Public,
@@ -1955,7 +2200,7 @@ fun BookListCard(
                         )
                     }
                     if (bookList.description.isNotEmpty()) {
-                        Text(bookList.description, fontSize = 12.sp, color = Color.Gray, maxLines = 1)
+                        Text(bookList.description, fontSize = 12.sp, color = Color.Gray, maxLines = 1, overflow = TextOverflow.Ellipsis)
                     }
                     Text("${bookList.books.size} books", fontSize = 12.sp, color = PaginexNeonPurple.copy(alpha = 0.8f))
                 }
@@ -2009,41 +2254,9 @@ fun BookListCard(
                     }
                 }
             }
-
-            // Horizontal book cover strip
-            if (bookList.books.isNotEmpty()) {
-                Spacer(modifier = Modifier.height(12.dp))
-                LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    items(bookList.books) { book ->
-                        Box {
-                            AsyncImage(
-                                model = book.coverUrl,
-                                contentDescription = book.title,
-                                modifier = Modifier
-                                    .size(44.dp, 64.dp)
-                                    .clip(RoundedCornerShape(8.dp))
-                                    .border(1.dp, PaginexGlassBorder, RoundedCornerShape(8.dp)),
-                                contentScale = ContentScale.Crop
-                            )
-                            if (isOwner) {
-                                Box(
-                                    modifier = Modifier
-                                        .size(16.dp)
-                                        .align(Alignment.TopEnd)
-                                        .offset(x = 4.dp, y = (-4).dp)
-                                        .background(Color.Black.copy(alpha = 0.6f), CircleShape)
-                                        .clickable { onRemoveBookClick(book.id) },
-                                    contentAlignment = Alignment.Center
-                                ) {
-                                    Icon(Icons.Default.Close, null, tint = Color.White, modifier = Modifier.size(10.dp))
-                                }
-                            }
-                        }
-                    }
-                }
-            }
         }
     }
+
 }
 
 @Composable
@@ -2488,7 +2701,7 @@ fun ConstellationScreen(targetUserId: String, onBack: () -> Unit, onBookClick: (
                             Box(
                                 modifier = Modifier
                                     .offset(x = with(density) { (bx - 36f).toDp() }, y = with(density) { (by + 11f).toDp() })
-                                    .clickable { onBookClick(bookStatus.id) }
+                                    .clickable { onBookClick(bookStatus.book.id) }
                             ) {
                                 Text(
                                     bookStatus.book.title,
@@ -2558,6 +2771,7 @@ fun ConstellationScreen(targetUserId: String, onBack: () -> Unit, onBookClick: (
             }
         }
     }
+
 }
 
 @Composable
@@ -2653,6 +2867,7 @@ fun OrbitalStatusSelector(
             }
         }
     }
+
 }
 
 @Composable
@@ -2744,6 +2959,8 @@ fun CreatePostScreen(initialPostId: String? = null, onPost: () -> Unit, onDrafts
     var rating by remember { mutableStateOf(initialPost?.rating ?: 5f) }
     var showPublishDialog by remember { mutableStateOf(false) }
     var showLibrarySelector by remember { mutableStateOf(false) }
+    var showListSelector by remember { mutableStateOf(false) }
+    var selectedBookList by remember { mutableStateOf<BookList?>(initialPost?.booklist) }
     
     // Undo States
     var undoTimer by remember { mutableStateOf<Int?>(null) }
@@ -2818,19 +3035,34 @@ fun CreatePostScreen(initialPostId: String? = null, onPost: () -> Unit, onDrafts
                 Spacer(modifier = Modifier.height(16.dp))
 
                 Box(modifier = Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
-                    OutlinedButton(
-                        onClick = { showLibrarySelector = true },
-                        modifier = Modifier.padding(top = 8.dp).fillMaxWidth(0.8f).height(48.dp),
-                        shape = RoundedCornerShape(24.dp),
-                        border = BorderStroke(1.dp, PaginexNeonPurple.copy(alpha = 0.6f))
-                    ) {
-                        Icon(Icons.Default.Add, null, tint = PaginexNeonPurple, modifier = Modifier.size(16.dp))
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text("Select Book from Library", color = PaginexNeonPurple, fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                    Column(modifier = Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
+                        OutlinedButton(
+                            onClick = { showLibrarySelector = true },
+                            modifier = Modifier.padding(top = 8.dp).fillMaxWidth(0.8f).height(48.dp),
+                            shape = RoundedCornerShape(24.dp),
+                            border = BorderStroke(1.dp, PaginexNeonPurple.copy(alpha = 0.6f))
+                        ) {
+                            Icon(Icons.Default.Add, null, tint = PaginexNeonPurple, modifier = Modifier.size(16.dp))
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text("Select Book from Library", color = PaginexNeonPurple, fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                        }
+                        
+                        Spacer(modifier = Modifier.height(12.dp))
+                        
+                        OutlinedButton(
+                            onClick = { showListSelector = true },
+                            modifier = Modifier.fillMaxWidth(0.8f).height(48.dp),
+                            shape = RoundedCornerShape(24.dp),
+                            border = BorderStroke(1.dp, PaginexNeonTeal.copy(alpha = 0.6f))
+                        ) {
+                            Icon(Icons.Default.List, null, tint = PaginexNeonTeal, modifier = Modifier.size(16.dp))
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text("Select Book List from Library", color = PaginexNeonTeal, fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                        }
                     }
                 }
 
-                if (selectedBook != null) {
+                if (selectedBook != null || selectedBookList != null) {
                     Spacer(modifier = Modifier.height(32.dp))
                     
                     // Selected Book "Box"
@@ -2844,38 +3076,49 @@ fun CreatePostScreen(initialPostId: String? = null, onPost: () -> Unit, onDrafts
                             modifier = Modifier.padding(16.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            AsyncImage(
-                                model = selectedBook!!.coverUrl,
-                                contentDescription = null,
-                                modifier = Modifier
-                                    .size(60.dp, 90.dp)
-                                    .clip(RoundedCornerShape(8.dp)),
-                                contentScale = ContentScale.Crop
-                            )
-                            Spacer(modifier = Modifier.width(20.dp))
-                            Column {
-                                Text(
-                                    text = selectedBook!!.title,
-                                    color = PaginexWhite,
-                                    fontSize = 18.sp,
-                                    fontWeight = FontWeight.Bold
+                            if (selectedBook != null) {
+                                AsyncImage(
+                                    model = selectedBook!!.coverUrl,
+                                    contentDescription = null,
+                                    modifier = Modifier
+                                        .size(60.dp, 90.dp)
+                                        .clip(RoundedCornerShape(8.dp)),
+                                    contentScale = ContentScale.Crop
                                 )
-                                Text(
-                                    text = selectedBook!!.author,
-                                    color = Color.Gray,
-                                    fontSize = 14.sp
-                                )
-                                Spacer(modifier = Modifier.height(8.dp))
-                                Text(
-                                    text = "SELECTED",
-                                    color = PaginexNeonTeal,
-                                    fontSize = 10.sp,
-                                    fontWeight = FontWeight.Black,
-                                    letterSpacing = 2.sp
-                                )
+                                Spacer(modifier = Modifier.width(20.dp))
+                                Column {
+                                    Text(selectedBook!!.title, color = PaginexWhite, fontSize = 18.sp, fontWeight = FontWeight.Bold)
+                                    Text(selectedBook!!.author, color = Color.Gray, fontSize = 14.sp)
+                                    Spacer(modifier = Modifier.height(8.dp))
+                                    Text("SELECTED BOOK", color = PaginexNeonTeal, fontSize = 10.sp, fontWeight = FontWeight.Black, letterSpacing = 2.sp)
+                                }
+                            } else if (selectedBookList != null) {
+                                if (selectedBookList!!.coverUrl.isNotEmpty()) {
+                                    AsyncImage(
+                                        model = selectedBookList!!.coverUrl,
+                                        contentDescription = null,
+                                        modifier = Modifier.size(60.dp, 90.dp).clip(RoundedCornerShape(8.dp)),
+                                        contentScale = ContentScale.Crop
+                                    )
+                                } else {
+                                    Box(modifier = Modifier.size(60.dp, 90.dp).background(PaginexNeonTeal.copy(alpha=0.2f), RoundedCornerShape(8.dp)), contentAlignment = Alignment.Center) {
+                                        Icon(Icons.Default.List, null, tint = PaginexNeonTeal)
+                                    }
+                                }
+                                Spacer(modifier = Modifier.width(20.dp))
+                                Column {
+                                    Text(selectedBookList!!.name, color = PaginexWhite, fontSize = 18.sp, fontWeight = FontWeight.Bold)
+                                    Text("${selectedBookList!!.books.size} books", color = Color.Gray, fontSize = 14.sp)
+                                    Spacer(modifier = Modifier.height(8.dp))
+                                    Text("SELECTED LIST", color = PaginexNeonTeal, fontSize = 10.sp, fontWeight = FontWeight.Black, letterSpacing = 2.sp)
+                                }
                             }
+
                             Spacer(modifier = Modifier.weight(1f))
-                            IconButton(onClick = { selectedBook = null }) {
+                            IconButton(onClick = { 
+                                selectedBook = null
+                                selectedBookList = null
+                            }) {
                                 Icon(Icons.Default.Close, null, tint = PaginexNeonPink)
                             }
                         }
@@ -2934,7 +3177,7 @@ fun CreatePostScreen(initialPostId: String? = null, onPost: () -> Unit, onDrafts
                     Spacer(modifier = Modifier.height(16.dp))
 
                     // Final Action Button
-                    val isReady = reviewText.isNotEmpty() && selectedBook != null && status != null
+                    val isReady = reviewText.isNotEmpty() && (selectedBook != null || selectedBookList != null) && status != null
                     val btnColor = when (status) {
                         "Read" -> PaginexNeonTeal
                         "Reading" -> PaginexNeonPurple
@@ -2973,8 +3216,22 @@ fun CreatePostScreen(initialPostId: String? = null, onPost: () -> Unit, onDrafts
                 onDismiss = { showLibrarySelector = false },
                 onBookSelected = { rs -> 
                     selectedBook = rs.book
+                    selectedBookList = null
                     status = rs.status
                     showLibrarySelector = false
+                }
+            )
+        }
+
+        if (showListSelector) {
+            BookListSelectorSheet(
+                targetUserId = MockData.currentUser.id.ifEmpty { "u1" },
+                onDismiss = { showListSelector = false },
+                onListSelected = { lst ->
+                    selectedBookList = lst
+                    selectedBook = null
+                    status = "Read" // Dummy status
+                    showListSelector = false
                 }
             )
         }
@@ -2990,13 +3247,26 @@ fun CreatePostScreen(initialPostId: String? = null, onPost: () -> Unit, onDrafts
                         onClick = { 
                             showPublishDialog = false
                             val uid = MockData.currentUser.id.ifEmpty { "u1" }
+                            val dummyBook = if (selectedBookList != null) {
+                                Book(
+                                    id = selectedBookList!!.id,
+                                    title = selectedBookList!!.name,
+                                    author = "List by author",
+                                    coverUrl = selectedBookList!!.coverUrl,
+                                    genre = "Booklist"
+                                )
+                            } else {
+                                selectedBook!!
+                            }
                             val newPost = Post(
                                 id = "post_${System.currentTimeMillis()}",
                                 userId = uid,
-                                book = selectedBook!!,
+                                book = dummyBook,
                                 status = status ?: "To Read",
                                 rating = rating,
-                                review = reviewText
+                                review = reviewText,
+                                isBooklistPost = selectedBookList != null,
+                                booklist = selectedBookList
                             )
                             pendingPost = newPost
                             isDraftAction = false
@@ -3023,13 +3293,26 @@ fun CreatePostScreen(initialPostId: String? = null, onPost: () -> Unit, onDrafts
                         onClick = { 
                             showPublishDialog = false
                             val uid = MockData.currentUser.id.ifEmpty { "u1" }
+                            val dummyBook = if (selectedBookList != null) {
+                                Book(
+                                    id = selectedBookList!!.id,
+                                    title = selectedBookList!!.name,
+                                    author = "List by author",
+                                    coverUrl = selectedBookList!!.coverUrl,
+                                    genre = "Booklist"
+                                )
+                            } else {
+                                selectedBook!!
+                            }
                             pendingPost = Post(
                                 id = "draft_${System.currentTimeMillis()}",
                                 userId = uid,
-                                book = selectedBook!!,
+                                book = dummyBook,
                                 status = status ?: "To Read",
                                 rating = rating,
-                                review = reviewText
+                                review = reviewText,
+                                isBooklistPost = selectedBookList != null,
+                                booklist = selectedBookList
                             )
                             isDraftAction = true
                             undoTimer = 5
@@ -3092,6 +3375,7 @@ fun CreatePostScreen(initialPostId: String? = null, onPost: () -> Unit, onDrafts
             }
         }
     }
+
 }
 
 @Composable
@@ -3303,6 +3587,7 @@ fun DraftsScreen(onBack: () -> Unit) {
             }
         }
     }
+
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -3427,6 +3712,7 @@ fun SettingsScreen(
             }
         }
     }
+
 }
 
 @Composable
