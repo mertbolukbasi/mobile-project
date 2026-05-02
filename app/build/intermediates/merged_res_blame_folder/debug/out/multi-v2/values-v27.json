@@ -4,7 +4,7 @@
             "outputFile": "com.example.paginex.app-mergeDebugResources-64:/values-v27/values-v27.xml",
             "map": [
                 {
-                    "source": "/home/burak/.gradle/caches/transforms-3/3cb4927c421f3676e116df890921fecb/transformed/jetified-core-splashscreen-1.0.1/res/values-v27/values-v27.xml",
+                    "source": "/home/zeref/.gradle/caches/transforms-3/3cb4927c421f3676e116df890921fecb/transformed/jetified-core-splashscreen-1.0.1/res/values-v27/values-v27.xml",
                     "from": {
                         "startLines": "2,3,4,7",
                         "startColumns": "4,4,4,4",

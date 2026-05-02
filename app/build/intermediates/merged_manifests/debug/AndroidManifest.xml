@@ -23,9 +23,7 @@
         android:appComponentFactory="androidx.core.app.CoreComponentFactory"
         android:debuggable="true"
         android:extractNativeLibs="false"
-        android:icon="@drawable/ic_paginex_icon"
         android:label="Paginex"
-        android:roundIcon="@drawable/ic_paginex_icon"
         android:supportsRtl="true"
         android:testOnly="true" >
         <activity

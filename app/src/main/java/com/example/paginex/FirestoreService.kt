@@ -526,10 +526,10 @@ object FirestoreService {
         }
     }
 
-    suspend fun getComments(postId: String): List<FireComment> {
+    suspend fun getComments(tableId: String): List<FireComment> {
         return try {
             val commentsSnap = db.collection("comments")
-                .whereEqualTo("tableId", postId)
+                .whereEqualTo("tableId", tableId)
                 .get().await()
 
             commentsSnap.documents.mapNotNull { doc ->
@@ -543,6 +543,52 @@ object FirestoreService {
         } catch (e: Exception) {
             Log.e(TAG, "Error getting comments", e)
             emptyList()
+        }
+    }
+
+    suspend fun toggleCommentLike(commentId: String, userId: String): Boolean {
+        return try {
+            val likeRef = db.collection("likes")
+                .whereEqualTo("userId", userId)
+                .whereEqualTo("tableId", commentId)
+                .get().await()
+
+            if (likeRef.isEmpty) {
+                val newLike = FireLike(
+                    id = "c_like_${userId}_${commentId}",
+                    userId = userId,
+                    tableId = commentId,
+                    createdAt = Timestamp.now()
+                )
+                db.collection("likes").document(newLike.id).set(newLike).await()
+            } else {
+                db.collection("likes").document(likeRef.documents[0].id).delete().await()
+            }
+            true
+        } catch (e: Exception) {
+            Log.e(TAG, "Error toggling comment like", e)
+            false
+        }
+    }
+
+    suspend fun getLikeCount(tableId: String): Int {
+        return try {
+            val snap = db.collection("likes").whereEqualTo("tableId", tableId).get().await()
+            snap.size()
+        } catch (e: Exception) {
+            0
+        }
+    }
+
+    suspend fun isLikedByUser(tableId: String, userId: String): Boolean {
+        return try {
+            val snap = db.collection("likes")
+                .whereEqualTo("tableId", tableId)
+                .whereEqualTo("userId", userId)
+                .get().await()
+            !snap.isEmpty
+        } catch (e: Exception) {
+            false
         }
     }
 
@@ -584,7 +630,7 @@ object FirestoreService {
 
             if (saveRef.isEmpty) {
                 val newSave = FireSave(
-                    id = "${userId}_${postId}",
+                    id = "post_save_${userId}_${postId}",
                     userId = userId,
                     tableId = postId,
                     createdAt = Timestamp.now()
@@ -596,6 +642,56 @@ object FirestoreService {
             true
         } catch (e: Exception) {
             Log.e(TAG, "Error toggling save", e)
+            false
+        }
+    }
+
+    suspend fun toggleBookListLike(listId: String, userId: String): Boolean {
+        return try {
+            val likeRef = db.collection("likes")
+                .whereEqualTo("userId", userId)
+                .whereEqualTo("tableId", listId)
+                .get().await()
+
+            if (likeRef.isEmpty) {
+                val newLike = FireLike(
+                    id = "bl_like_${userId}_${listId}",
+                    userId = userId,
+                    tableId = listId,
+                    createdAt = Timestamp.now()
+                )
+                db.collection("likes").document(newLike.id).set(newLike).await()
+            } else {
+                db.collection("likes").document(likeRef.documents[0].id).delete().await()
+            }
+            true
+        } catch (e: Exception) {
+            Log.e(TAG, "Error toggling book list like", e)
+            false
+        }
+    }
+
+    suspend fun toggleBookListSave(listId: String, userId: String): Boolean {
+        return try {
+            val saveRef = db.collection("saves")
+                .whereEqualTo("userId", userId)
+                .whereEqualTo("tableId", listId)
+                .get().await()
+
+            if (saveRef.isEmpty) {
+                val newSave = FireSave(
+                    id = "bl_save_${userId}_${listId}",
+                    userId = userId,
+                    tableId = listId,
+                    createdAt = Timestamp.now()
+                )
+                db.collection("saves").document(newSave.id).set(newSave).await()
+            } else {
+                db.collection("saves").document(saveRef.documents[0].id).delete().await()
+            }
+            true
+        } catch (e: Exception) {
+            Log.e(TAG, "Error toggling book list save", e)
             false
         }
     }
@@ -700,15 +796,59 @@ object FirestoreService {
         }
     }
 
-    suspend fun createBookList(name: String, description: String, userId: String): BookList? {
+    suspend fun createBookList(name: String, description: String, userId: String, isPrivate: Boolean = false): BookList? {
         return try {
             val id = "bl_${System.currentTimeMillis()}"
-            val fireList = FireBookList(id = id, name = name, description = description, userId = userId)
+            val fireList = FireBookList(id = id, name = name, description = description, userId = userId, isPrivate = isPrivate)
             db.collection("booklists").document(id).set(fireList).await()
-            BookList(id = id, userId = userId, name = name, description = description, coverUrl = "", books = mutableListOf())
+            BookList(id = id, userId = userId, name = name, description = description, coverUrl = "", isPrivate = isPrivate, books = mutableListOf())
         } catch (e: Exception) {
             Log.e(TAG, "Error creating book list", e)
             null
+        }
+    }
+
+    suspend fun updateBookList(listId: String, name: String, description: String, isPrivate: Boolean): Boolean {
+        return try {
+            db.collection("booklists").document(listId).update(
+                "name", name,
+                "description", description,
+                "isPrivate", isPrivate,
+                "updatedAt", Timestamp.now()
+            ).await()
+            true
+        } catch (e: Exception) {
+            Log.e(TAG, "Error updating book list", e)
+            false
+        }
+    }
+
+    suspend fun deleteBookList(listId: String): Boolean {
+        return try {
+            db.collection("booklists").document(listId).delete().await()
+            // Clean up books in list
+            val books = db.collection("booklist_books").whereEqualTo("booklistId", listId).get().await()
+            books.documents.forEach { it.reference.delete().await() }
+            // Clean up likes/saves
+            val likes = db.collection("likes").whereEqualTo("tableId", listId).get().await()
+            likes.documents.forEach { it.reference.delete().await() }
+            val saves = db.collection("saves").whereEqualTo("tableId", listId).get().await()
+            saves.documents.forEach { it.reference.delete().await() }
+            true
+        } catch (e: Exception) {
+            Log.e(TAG, "Error deleting book list", e)
+            false
+        }
+    }
+
+    suspend fun removeBookFromList(listId: String, bookId: String): Boolean {
+        return try {
+            val junctionId = "${listId}_${bookId}"
+            db.collection("booklist_books").document(junctionId).delete().await()
+            true
+        } catch (e: Exception) {
+            Log.e(TAG, "Error removing book from list", e)
+            false
         }
     }
 
@@ -804,23 +944,54 @@ object FirestoreService {
 
                 val listsSnap = listsSnapDef.await()
                 val fireLists = listsSnap.toObjects(FireBookList::class.java)
-                MockData.sampleBookLists.clear()
-                fireLists.forEach { fl ->
-                    val booksInList = mutableListOf<Book>()
-                    val junctionSnap = db.collection("booklist_books").whereEqualTo("booklistId", fl.id).get().await()
-                    junctionSnap.documents.forEach { jDoc ->
-                        val bId = jDoc.getString("bookId")
-                        MockData.sampleBooks.find { it.id == bId }?.let { booksInList.add(it) }
-                    }
+                
+                // Optimization: fetch likes and saves for current user
+                val currentUserId = "u1"
+                val userLikesSnap = db.collection("likes").whereEqualTo("userId", currentUserId).get().await()
+                val userLikedIds = userLikesSnap.documents.mapNotNull { it.getString("tableId") }.toSet()
+                
+                val userSavesSnap = db.collection("saves").whereEqualTo("userId", currentUserId).get().await()
+                val userSavedIds = userSavesSnap.documents.mapNotNull { it.getString("tableId") }.toSet()
 
-                    MockData.sampleBookLists.add(BookList(
-                        id = fl.id,
-                        userId = fl.userId,
-                        name = fl.name,
-                        description = fl.description,
-                        coverUrl = booksInList.firstOrNull()?.coverUrl ?: "",
-                        books = booksInList
-                    ))
+                // Optimization: fetch all likes to get counts
+                val allLikesSnap = db.collection("likes").get().await()
+                val listLikesCount = allLikesSnap.documents.groupBy { it.getString("tableId") ?: "" }.mapValues { it.value.size }
+
+                MockData.sampleBookLists.clear()
+                
+                // Fetch all unique list IDs that are either owned, public, or saved by user
+                val savedListIds = userSavedIds.filter { it.startsWith("bl_") }.toSet()
+                
+                // We need to fetch lists that are saved by the user but not necessarily owned or public in the first snap
+                // Actually, the listsSnap has all lists. In a real app we'd filter, but here it seems it fetches all.
+                // Let's refine the lists fetching if needed. For now, assume listsSnap contains everything we might need.
+                
+                fireLists.forEach { fl ->
+                    val isOwner = fl.userId == currentUserId
+                    val isSaved = savedListIds.contains(fl.id)
+                    
+                    // Show if: Owner, OR (Public AND (not private)), OR (Saved)
+                    if (isOwner || !fl.isPrivate || isSaved) {
+                        val booksInList = mutableListOf<Book>()
+                        val junctionSnap = db.collection("booklist_books").whereEqualTo("booklistId", fl.id).get().await()
+                        junctionSnap.documents.forEach { jDoc ->
+                            val bId = jDoc.getString("bookId")
+                            MockData.sampleBooks.find { it.id == bId }?.let { booksInList.add(it) }
+                        }
+
+                        MockData.sampleBookLists.add(BookList(
+                            id = fl.id,
+                            userId = fl.userId,
+                            name = fl.name,
+                            description = fl.description,
+                            coverUrl = booksInList.firstOrNull()?.coverUrl ?: "",
+                            isPrivate = fl.isPrivate,
+                            likesCount = listLikesCount[fl.id] ?: 0,
+                            isLiked = userLikedIds.contains(fl.id),
+                            isSaved = isSaved,
+                            books = booksInList
+                        ))
+                    }
                 }
 
                 val exploreSnap = exploreSnapDef.await()

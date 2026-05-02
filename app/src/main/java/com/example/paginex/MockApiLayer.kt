@@ -50,6 +50,10 @@ data class BookList(
     val name: String,
     val description: String = "",
     val coverUrl: String = "",
+    val isPrivate: Boolean = false,
+    val likesCount: Int = 0,
+    val isLiked: Boolean = false,
+    val isSaved: Boolean = false,
     val books: MutableList<Book> = mutableListOf()
 )
 

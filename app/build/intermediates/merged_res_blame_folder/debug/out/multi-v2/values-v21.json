@@ -4,7 +4,7 @@
             "outputFile": "com.example.paginex.app-mergeDebugResources-64:/values-v21/values-v21.xml",
             "map": [
                 {
-                    "source": "/home/burak/.gradle/caches/transforms-3/0e35fceedd85a502574437aff89fec4d/transformed/jetified-credentials-play-services-auth-1.2.0-rc01/res/values-v21/values-v21.xml",
+                    "source": "/home/zeref/.gradle/caches/transforms-3/0e35fceedd85a502574437aff89fec4d/transformed/jetified-credentials-play-services-auth-1.2.0-rc01/res/values-v21/values-v21.xml",
                     "from": {
                         "startLines": "2",
                         "startColumns": "4",
@@ -23,7 +23,7 @@
                     }
                 },
                 {
-                    "source": "/home/burak/.gradle/caches/transforms-3/c95b5322f4231789b345200283c41b85/transformed/core-1.13.1/res/values-v21/values-v21.xml",
+                    "source": "/home/zeref/.gradle/caches/transforms-3/c95b5322f4231789b345200283c41b85/transformed/core-1.13.1/res/values-v21/values-v21.xml",
                     "from": {
                         "startLines": "2,3,4,5,6,7,8,9,10,13",
                         "startColumns": "4,4,4,4,4,4,4,4,4,4",

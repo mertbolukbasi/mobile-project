@@ -227,8 +227,9 @@ fun StatusBadge(status: String) {
     ) {
         Text(
             text = text,
-            modifier = Modifier.padding(horizontal = 10.dp, vertical = 2.dp),
+            modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
             style = MaterialTheme.typography.labelSmall,
+            fontSize = 11.sp,
             color = glowColor,
             fontWeight = FontWeight.Bold
         )
@@ -418,9 +419,9 @@ fun BookPostCard(
                         fontWeight = FontWeight.Medium
                     )
                     Spacer(modifier = Modifier.height(12.dp))
-                    FlowRow(
+                    Row(
                         horizontalArrangement = Arrangement.spacedBy(8.dp),
-                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
                         Surface(
                             color = PaginexWhite.copy(alpha = 0.05f),
@@ -429,8 +430,8 @@ fun BookPostCard(
                         ) {
                             Text(
                                 post.book.genre,
-                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 2.dp),
-                                fontSize = 12.sp,
+                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
+                                fontSize = 11.sp,
                                 color = PaginexWhite.copy(alpha = 0.7f)
                             )
                         }
@@ -443,12 +444,12 @@ fun BookPostCard(
                                 border = BorderStroke(1.dp, Color(0xFFFFD700).copy(alpha = 0.3f))
                             ) {
                                 Row(
-                                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 2.dp),
+                                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
-                                    Icon(Icons.Default.Star, null, tint = Color(0xFFFFD700), modifier = Modifier.size(12.dp))
+                                    Icon(Icons.Default.Star, null, tint = Color(0xFFFFD700), modifier = Modifier.size(10.dp))
                                     Spacer(modifier = Modifier.width(4.dp))
-                                    Text("${post.rating.toInt()}/10", fontSize = 12.sp, color = Color(0xFFFFD700), fontWeight = FontWeight.Bold)
+                                    Text("${post.rating.toInt()}/10", fontSize = 11.sp, color = Color(0xFFFFD700), fontWeight = FontWeight.Bold)
                                 }
                             }
                         }
