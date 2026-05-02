@@ -4,7 +4,7 @@
             "outputFile": "com.example.paginex.app-mergeDebugResources-60:/values-v16/values-v16.xml",
             "map": [
                 {
-                    "source": "/home/zeref/.gradle/caches/transforms-3/790e73cefa613367d954d73eddb5791b/transformed/core-1.12.0/res/values-v16/values-v16.xml",
+                    "source": "/home/burak/.gradle/caches/transforms-3/790e73cefa613367d954d73eddb5791b/transformed/core-1.12.0/res/values-v16/values-v16.xml",
                     "from": {
                         "startLines": "2",
                         "startColumns": "4",

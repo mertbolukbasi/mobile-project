@@ -115,6 +115,7 @@ object FirestoreService {
         return try {
             val postsSnap = db.collection("posts").orderBy("createdAt").get().await()
             val posts = mutableListOf<Post>()
+            val currentUserId = "u1" // Hardcoded current user for now
             
             for (doc in postsSnap.documents) {
                 val id = doc.getString("id") ?: ""
@@ -124,18 +125,40 @@ object FirestoreService {
                 val bookId = doc.getString("bookId") ?: ""
                 val createdAt = doc.getTimestamp("createdAt")?.toDate()?.time ?: System.currentTimeMillis()
                 
-                // Fetch book details to reconstruct UI Post object
+                // Fetch book details
                 val bookDoc = db.collection("books").document(bookId).get().await()
                 val fireBook = bookDoc.toObject(FireBook::class.java)
                 
+                // Check if liked by current user
+                val likeSnap = db.collection("likes")
+                    .whereEqualTo("userId", currentUserId)
+                    .whereEqualTo("tableId", id)
+                    .get().await()
+                val isLiked = !likeSnap.isEmpty
+
+                // Check if saved by current user
+                val saveSnap = db.collection("saves")
+                    .whereEqualTo("userId", currentUserId)
+                    .whereEqualTo("tableId", id)
+                    .get().await()
+                val isSaved = !saveSnap.isEmpty
+
+                // Get counts
+                val totalLikes = db.collection("likes").whereEqualTo("tableId", id).get().await().size()
+                val totalComments = db.collection("comments").whereEqualTo("tableId", id).get().await().size()
+
                 if (fireBook != null) {
                     val book = Book(
                         id = fireBook.id,
                         title = fireBook.title,
                         author = fireBook.author,
-                        coverUrl = MockData.sampleBooks.find { it.id == fireBook.id }?.coverUrl ?: "",
+                        coverUrl = MockData.sampleBooks.find { it.id == fireBook.id }?.coverUrl ?: "https://images.unsplash.com/photo-1541963463532-d68292c34b19?auto=format&fit=crop&q=80&w=400",
                         genre = fireBook.genre,
-                        publishYear = 2020, // Simplified
+                        publishYear = fireBook.publishYear?.toDate()?.let { 
+                            val cal = Calendar.getInstance()
+                            cal.time = it
+                            cal.get(Calendar.YEAR)
+                        } ?: 2020,
                         summary = fireBook.summary,
                         isbn = fireBook.isbn
                     )
@@ -144,10 +167,14 @@ object FirestoreService {
                         id = id,
                         userId = userId,
                         book = book,
-                        status = "Okundu", // Placeholder
+                        status = "Okundu", 
                         rating = rating,
                         review = description,
-                        createdAt = createdAt
+                        createdAt = createdAt,
+                        isLiked = isLiked,
+                        isSaved = isSaved,
+                        likesCount = totalLikes,
+                        commentsCount = totalComments
                     ))
                 }
             }
@@ -155,6 +182,79 @@ object FirestoreService {
         } catch (e: Exception) {
             Log.e(TAG, "Error getting feed", e)
             emptyList()
+        }
+    }
+
+    suspend fun toggleLike(postId: String, userId: String): Boolean {
+        return try {
+            val likeRef = db.collection("likes")
+                .whereEqualTo("userId", userId)
+                .whereEqualTo("tableId", postId)
+                .get().await()
+
+            if (likeRef.isEmpty) {
+                val newLike = FireLike(
+                    id = "${userId}_${postId}",
+                    userId = userId,
+                    tableId = postId,
+                    createdAt = Timestamp.now()
+                )
+                db.collection("likes").document(newLike.id).set(newLike).await()
+            } else {
+                db.collection("likes").document(likeRef.documents[0].id).delete().await()
+            }
+            true
+        } catch (e: Exception) {
+            Log.e(TAG, "Error toggling like", e)
+            false
+        }
+    }
+
+    suspend fun toggleSave(postId: String, userId: String): Boolean {
+        return try {
+            val saveRef = db.collection("saves")
+                .whereEqualTo("userId", userId)
+                .whereEqualTo("tableId", postId)
+                .get().await()
+
+            if (saveRef.isEmpty) {
+                val newSave = FireSave(
+                    id = "${userId}_${postId}",
+                    userId = userId,
+                    tableId = postId,
+                    createdAt = Timestamp.now()
+                )
+                db.collection("saves").document(newSave.id).set(newSave).await()
+            } else {
+                db.collection("saves").document(saveRef.documents[0].id).delete().await()
+            }
+            true
+        } catch (e: Exception) {
+            Log.e(TAG, "Error toggling save", e)
+            false
+        }
+    }
+
+    suspend fun getComments(postId: String): List<FireComment> {
+        return try {
+            val commentsSnap = db.collection("comments")
+                .whereEqualTo("tableId", postId)
+                .orderBy("createdAt")
+                .get().await()
+            commentsSnap.toObjects(FireComment::class.java)
+        } catch (e: Exception) {
+            Log.e(TAG, "Error getting comments", e)
+            emptyList()
+        }
+    }
+
+    suspend fun addComment(comment: FireComment): Boolean {
+        return try {
+            db.collection("comments").document(comment.id).set(comment).await()
+            true
+        } catch (e: Exception) {
+            Log.e(TAG, "Error adding comment", e)
+            false
         }
     }
 

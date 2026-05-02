@@ -240,7 +240,9 @@ fun BookPostCard(
     post: Post, 
     onBookClick: (String) -> Unit = {},
     onEditClick: (String) -> Unit = {},
-    onDeleteClick: (Post) -> Unit = {}
+    onDeleteClick: (Post) -> Unit = {},
+    onLikeClick: () -> Unit = {},
+    onSaveClick: () -> Unit = {}
 ) {
     Card(
         modifier = Modifier
@@ -425,12 +427,14 @@ fun BookPostCard(
                 modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Icon(
-                    imageVector = if (post.isLiked) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
-                    contentDescription = null,
-                    tint = if (post.isLiked) Color.Red else PaginexWhite,
-                    modifier = Modifier.size(28.dp)
-                )
+                IconButton(onClick = onLikeClick, modifier = Modifier.size(28.dp)) {
+                    Icon(
+                        imageVector = if (post.isLiked) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
+                        contentDescription = null,
+                        tint = if (post.isLiked) Color.Red else PaginexWhite,
+                        modifier = Modifier.size(28.dp)
+                    )
+                }
                 Spacer(modifier = Modifier.width(8.dp))
                 Text(post.likesCount.toString(), color = PaginexWhite, fontSize = 16.sp)
                 
@@ -453,12 +457,14 @@ fun BookPostCard(
                 
                 Spacer(modifier = Modifier.weight(1f))
                 
-                Icon(
-                    imageVector = if (post.isSaved) Icons.Default.Bookmark else Icons.Default.BookmarkBorder,
-                    contentDescription = null,
-                    tint = if (post.isSaved) PaginexNeonPurple else PaginexWhite,
-                    modifier = Modifier.size(28.dp)
-                )
+                IconButton(onClick = onSaveClick, modifier = Modifier.size(28.dp)) {
+                    Icon(
+                        imageVector = if (post.isSaved) Icons.Default.Bookmark else Icons.Default.BookmarkBorder,
+                        contentDescription = null,
+                        tint = if (post.isSaved) PaginexNeonPurple else PaginexWhite,
+                        modifier = Modifier.size(28.dp)
+                    )
+                }
             }
             
             Spacer(modifier = Modifier.height(12.dp))

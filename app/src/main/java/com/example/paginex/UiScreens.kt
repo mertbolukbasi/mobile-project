@@ -378,10 +378,11 @@ fun PaginexHomeScreen(
     val listState = rememberLazyListState()
     var currentSortMode by remember { mutableStateOf("En Güncel") }
     var isAscending by remember { mutableStateOf(true) }
+    val scope = rememberCoroutineScope()
     
-    // Auto-scroll to top when sorting changes
-    LaunchedEffect(currentSortMode, isAscending) {
-        listState.animateScrollToItem(0)
+    // Refresh data from Firestore on load
+    LaunchedEffect(Unit) {
+        FirestoreService.syncMockData()
     }
 
     val posts = when (currentSortMode) {
@@ -497,6 +498,36 @@ fun PaginexHomeScreen(
                         onEditClick = { postId -> onNavigateToEdit(postId) },
                         onDeleteClick = { postToDelete -> 
                             MockData.feedPosts.remove(postToDelete)
+                        },
+                        onLikeClick = {
+                            scope.launch {
+                                val success = FirestoreService.toggleLike(post.id, "u1")
+                                if (success) {
+                                    val index = MockData.feedPosts.indexOfFirst { it.id == post.id }
+                                    if (index != -1) {
+                                        val currentPost = MockData.feedPosts[index]
+                                        val newIsLiked = !currentPost.isLiked
+                                        MockData.feedPosts[index] = currentPost.copy(
+                                            isLiked = newIsLiked,
+                                            likesCount = if (newIsLiked) currentPost.likesCount + 1 else currentPost.likesCount - 1
+                                        )
+                                    }
+                                }
+                            }
+                        },
+                        onSaveClick = {
+                            scope.launch {
+                                val success = FirestoreService.toggleSave(post.id, "u1")
+                                if (success) {
+                                    val index = MockData.feedPosts.indexOfFirst { it.id == post.id }
+                                    if (index != -1) {
+                                        val currentPost = MockData.feedPosts[index]
+                                        MockData.feedPosts[index] = currentPost.copy(
+                                            isSaved = !currentPost.isSaved
+                                        )
+                                    }
+                                }
+                            }
                         }
                     )
                 }

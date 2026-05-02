@@ -20,6 +20,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
+import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -28,12 +29,13 @@ fun CommentsSheet(
     onDismiss: () -> Unit
 ) {
     var commentText by remember { mutableStateOf("") }
-    // Mocking comments for UI demonstration
-    val comments = remember {
-        mutableStateListOf(
-            FireComment(userId = "u2", comment = "Harika bir inceleme! Ben de okumayı düşünüyordum.", tableId = tableId),
-            FireComment(userId = "u3", comment = "Bu kitabın sonu beni çok şaşırttı.", tableId = tableId)
-        )
+    val comments = remember { mutableStateListOf<FireComment>() }
+    val scope = rememberCoroutineScope()
+
+    LaunchedEffect(tableId) {
+        val fetchedComments = FirestoreService.getComments(tableId)
+        comments.clear()
+        comments.addAll(fetchedComments)
     }
 
     ModalBottomSheet(
@@ -91,8 +93,18 @@ fun CommentsSheet(
                 IconButton(
                     onClick = {
                         if (commentText.isNotBlank()) {
-                            comments.add(FireComment(userId = "u1", comment = commentText, tableId = tableId))
-                            commentText = ""
+                            val newComment = FireComment(
+                                id = "c_${System.currentTimeMillis()}",
+                                userId = "u1",
+                                comment = commentText,
+                                tableId = tableId
+                            )
+                            scope.launch {
+                                if (FirestoreService.addComment(newComment)) {
+                                    comments.add(newComment)
+                                    commentText = ""
+                                }
+                            }
                         }
                     },
                     modifier = Modifier.background(PaginexNeonPurple, CircleShape)
