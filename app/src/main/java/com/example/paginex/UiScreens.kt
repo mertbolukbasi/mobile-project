@@ -661,29 +661,38 @@ fun PaginexHomeScreen(
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 val sortOptions = listOf("Latest", "A-Z", "Rating")
-                items(sortOptions) { option ->
+                items(sortOptions, key = { it }) { option ->
                     val isSelected = currentSortMode == option
                     val label = if ((option == "A-Z" || option == "Rating") && isSelected) {
                         if (isAscending) "$option ↑" else "$option ↓"
                     } else option
                     
+                    val contentColor = if (isSelected) Color.White else PaginexWhite
+                    val containerColor = if (isSelected) PaginexNeonPurple else PaginexGlass
+                    val borderColor = if (isSelected) PaginexNeonPurple else PaginexGlassBorder
+
                     Surface(
-                        color = if (isSelected) PaginexNeonPurple else PaginexGlass,
-                        shape = RoundedCornerShape(16.dp),
-                        border = BorderStroke(1.dp, if (isSelected) PaginexNeonPurple else PaginexGlassBorder),
-                        modifier = Modifier.clickable { 
-                            if ((option == "A-Z" || option == "Rating") && currentSortMode == option) {
-                                isAscending = !isAscending
+                        onClick = { 
+                            if (currentSortMode == option) {
+                                // If already selected, toggle direction if applicable
+                                if (option == "A-Z" || option == "Rating") {
+                                    isAscending = !isAscending
+                                }
                             } else {
+                                // If a new one is clicked, set it as the only active one
                                 currentSortMode = option
+                                // Default directions for new selection
                                 isAscending = option == "A-Z"
                             }
-                        }
+                        },
+                        color = containerColor,
+                        shape = RoundedCornerShape(16.dp),
+                        border = BorderStroke(1.dp, borderColor)
                     ) {
                         Text(
                             text = label,
                             modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
-                            color = if (isSelected) Color.White else PaginexWhite,
+                            color = contentColor,
                             fontWeight = FontWeight.Bold,
                             fontSize = 13.sp
                         )
@@ -2109,7 +2118,11 @@ fun AddBookToListDialog(bookList: BookList, onDismiss: () -> Unit, onBookAdded: 
         },
         text = {
             LazyColumn(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                items(MockData.sampleBooks.filter { b -> bookList.books.none { it.id == b.id } }) { book ->
+                val currentUid = MockData.currentUser.id.ifEmpty { "u1" }
+                val userLibraryBooks = MockData.readingStatuses.filter { it.userId == currentUid }.map { it.book }
+                val availableBooks = userLibraryBooks.filter { b -> bookList.books.none { it.id == b.id } }
+                
+                items(availableBooks) { book ->
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -2275,7 +2288,8 @@ fun ConstellationScreen(targetUserId: String, onBack: () -> Unit, onBookClick: (
                 title = {
                     Column {
                         Text("Constellation", color = PaginexWhite, fontWeight = FontWeight.Bold, fontSize = 18.sp)
-                        Text("My Book Universe", color = Color(0xFFFFD700), fontSize = 11.sp)
+                        val isMe = targetUserId == "u1" || targetUserId == MockData.currentUser.id
+                        Text(if (isMe) "My Book Universe" else "Book Universe", color = Color(0xFFFFD700), fontSize = 11.sp)
                     }
                 },
                 navigationIcon = {
