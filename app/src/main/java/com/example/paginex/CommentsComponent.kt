@@ -26,90 +26,125 @@ import kotlinx.coroutines.launch
 @Composable
 fun CommentsSheet(
     tableId: String,
-    onDismiss: () -> Unit
+    onDismiss: () -> Unit,
+    onCommentAdded: () -> Unit = {}
 ) {
     var commentText by remember { mutableStateOf("") }
     val comments = remember { mutableStateListOf<FireComment>() }
+    val userCache = remember { mutableStateMapOf<String, FireUser?>() }
     val scope = rememberCoroutineScope()
+    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
 
     LaunchedEffect(tableId) {
         val fetchedComments = FirestoreService.getComments(tableId)
         comments.clear()
         comments.addAll(fetchedComments)
+        // Pre-fetch user data for all commenters
+        fetchedComments.map { it.userId }.distinct().forEach { uid ->
+            if (!userCache.containsKey(uid)) {
+                userCache[uid] = FirestoreService.getUserById(uid)
+            }
+        }
     }
 
     ModalBottomSheet(
         onDismissRequest = onDismiss,
+        sheetState = sheetState,
         containerColor = PaginexGalaxy,
         dragHandle = { BottomSheetDefaults.DragHandle(color = PaginexGlassBorder) }
     ) {
-        Column(
+        Box(
             modifier = Modifier
-                .fillMaxHeight(0.8f)
-                .padding(horizontal = 20.dp)
+                .fillMaxHeight(0.9f)
+                .fillMaxWidth()
         ) {
-            Text(
-                "Yolculuk Notları",
-                style = MaterialTheme.typography.titleLarge,
-                color = PaginexWhite,
-                fontWeight = FontWeight.Bold
-            )
-            Spacer(modifier = Modifier.height(20.dp))
-
-            LazyColumn(
-                modifier = Modifier.weight(1f),
-                verticalArrangement = Arrangement.spacedBy(16.dp)
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(horizontal = 20.dp)
             ) {
-                items(comments) { comment ->
-                    CommentItem(comment)
+                Text(
+                    "Journey Notes",
+                    color = PaginexWhite,
+                    fontSize = 18.sp,
+                    fontWeight = FontWeight.Bold
+                )
+                Spacer(modifier = Modifier.height(20.dp))
+
+                LazyColumn(
+                    modifier = Modifier.weight(1f),
+                    verticalArrangement = Arrangement.spacedBy(16.dp),
+                    contentPadding = PaddingValues(bottom = 100.dp)
+                ) {
+                    items(comments) { comment ->
+                        val user = userCache[comment.userId]
+                        CommentItem(comment, user)
+                    }
                 }
             }
 
-            Spacer(modifier = Modifier.height(16.dp))
-
-            // Comment Input
-            Row(
+            Surface(
+                color = PaginexGalaxy,
                 modifier = Modifier
-                    .padding(bottom = 32.dp)
-                    .fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically
+                    .align(Alignment.BottomCenter)
+                    .fillMaxWidth()
+                    .border(1.dp, PaginexGlassBorder.copy(alpha = 0.5f))
             ) {
-                OutlinedTextField(
-                    value = commentText,
-                    onValueChange = { commentText = it },
-                    placeholder = { Text("Bir şeyler fısılda...", color = Color.Gray) },
-                    modifier = Modifier.weight(1f),
-                    shape = RoundedCornerShape(24.dp),
-                    colors = OutlinedTextFieldDefaults.colors(
-                        focusedBorderColor = PaginexNeonPurple,
-                        unfocusedBorderColor = PaginexGlassBorder,
-                        focusedTextColor = PaginexWhite,
-                        unfocusedTextColor = PaginexWhite,
-                        unfocusedContainerColor = PaginexGlass,
-                        focusedContainerColor = PaginexGlass
+                Row(
+                    modifier = Modifier
+                        .padding(horizontal = 20.dp, vertical = 16.dp)
+                        .navigationBarsPadding()
+                        .fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    OutlinedTextField(
+                        value = commentText,
+                        onValueChange = { commentText = it },
+                        placeholder = { Text("Whisper something...", color = Color.Gray, fontSize = 14.sp) },
+                        modifier = Modifier.weight(1f),
+                        shape = RoundedCornerShape(24.dp),
+                        maxLines = 4,
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedBorderColor = PaginexNeonPurple,
+                            unfocusedBorderColor = PaginexGlassBorder,
+                            focusedTextColor = PaginexWhite,
+                            unfocusedTextColor = PaginexWhite,
+                            unfocusedContainerColor = PaginexGlass,
+                            focusedContainerColor = PaginexGlass
+                        )
                     )
-                )
-                Spacer(modifier = Modifier.width(12.dp))
-                IconButton(
-                    onClick = {
-                        if (commentText.isNotBlank()) {
-                            val newComment = FireComment(
-                                id = "c_${System.currentTimeMillis()}",
-                                userId = "u1",
-                                comment = commentText,
-                                tableId = tableId
-                            )
-                            scope.launch {
-                                if (FirestoreService.addComment(newComment)) {
-                                    comments.add(newComment)
-                                    commentText = ""
+                    Spacer(modifier = Modifier.width(12.dp))
+                    IconButton(
+                        onClick = {
+                            if (commentText.isNotBlank()) {
+                                val newComment = FireComment(
+                                    id = "c_${System.currentTimeMillis()}",
+                                    userId = "u1",
+                                    comment = commentText,
+                                    tableId = tableId,
+                                    createdAt = com.google.firebase.Timestamp.now(),
+                                    updatedAt = com.google.firebase.Timestamp.now()
+                                )
+                                // Add to local cache immediately
+                                comments.add(newComment)
+                                val savedText = commentText
+                                commentText = ""
+                                onCommentAdded()
+                                // Write to Firestore in GlobalScope (survives sheet dismissal)
+                                kotlinx.coroutines.MainScope().launch {
+                                    FirestoreService.addComment(newComment)
+                                    if (!userCache.containsKey("u1")) {
+                                        userCache["u1"] = FirestoreService.getUserById("u1")
+                                    }
                                 }
                             }
-                        }
-                    },
-                    modifier = Modifier.background(PaginexNeonPurple, CircleShape)
-                ) {
-                    Icon(Icons.Default.Send, contentDescription = "Gönder", tint = Color.Black)
+                        },
+                        modifier = Modifier
+                            .size(48.dp)
+                            .background(PaginexNeonPurple, CircleShape)
+                    ) {
+                        Icon(Icons.Default.Send, contentDescription = "Send", tint = Color.Black)
+                    }
                 }
             }
         }
@@ -117,10 +152,27 @@ fun CommentsSheet(
 }
 
 @Composable
-fun CommentItem(comment: FireComment) {
+fun CommentItem(comment: FireComment, user: FireUser? = null) {
+    val displayName = if (user != null) "@${user.username}" else "@user_${comment.userId}"
+    val avatarUrl = user?.avatarUrl ?: ""
+
+    // Calculate relative time from createdAt
+    val timeText = remember(comment.createdAt) {
+        val now = System.currentTimeMillis()
+        val diff = now - comment.createdAt.toDate().time
+        when {
+            diff < 60_000 -> "just now"
+            diff < 3600_000 -> "${diff / 60_000}m ago"
+            diff < 86400_000 -> "${diff / 3600_000}h ago"
+            diff < 2592000_000 -> "${diff / 86400_000}d ago"
+            diff < 31536000_000 -> "${diff / 2592000_000}mo ago"
+            else -> "${diff / 31536000_000}y ago"
+        }
+    }
+
     Row(modifier = Modifier.fillMaxWidth()) {
         AsyncImage(
-            model = "https://images.unsplash.com/photo-1494790108377-be9c29b29330?auto=format&fit=crop&q=80&w=200",
+            model = avatarUrl.ifEmpty { "https://via.placeholder.com/200" },
             contentDescription = null,
             modifier = Modifier
                 .size(36.dp)
@@ -131,7 +183,7 @@ fun CommentItem(comment: FireComment) {
         Spacer(modifier = Modifier.width(12.dp))
         Column {
             Text(
-                text = "@kullanıcı_${comment.userId}",
+                text = displayName,
                 fontSize = 12.sp,
                 color = PaginexNeonTeal,
                 fontWeight = FontWeight.Bold
@@ -143,7 +195,7 @@ fun CommentItem(comment: FireComment) {
                 lineHeight = 20.sp
             )
             Text(
-                text = "12 dk önce",
+                text = timeText,
                 fontSize = 10.sp,
                 color = Color.Gray,
                 modifier = Modifier.padding(top = 4.dp)

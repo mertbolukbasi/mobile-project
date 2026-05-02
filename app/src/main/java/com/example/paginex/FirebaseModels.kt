@@ -19,15 +19,17 @@ data class FireUser(
     val avatarUrl: String = "",
     val location: String = "",
     val followersCount: Int = 0,
-    val followingCount: Int = 0
+    val followingCount: Int = 0,
+    val favoriteBooks: List<String> = emptyList() // Max 5 book IDs
 )
 
 data class FirePost(
     val id: String = "",
-    val userId: String = "", // userId (ObjectId in image)
-    val bookId: String = "", // Extension for app compatibility
+    val userId: String = "",
+    val bookId: String = "",
     val description: String = "",
     val rating: Double = 0.0,
+    val status: String = "Okunacak",
     val createdAt: Timestamp = Timestamp.now(),
     val updatedAt: Timestamp = Timestamp.now()
 )
@@ -97,6 +99,7 @@ data class FireBook(
     val genre: String = "",
     val summary: String = "",
     val isbn: String = "",
+    val coverUrl: String = "",
     val rating: Double = 0.0,
     val publishYear: Timestamp? = null,
     val createdAt: Timestamp = Timestamp.now(),

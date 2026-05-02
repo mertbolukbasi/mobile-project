@@ -1,6 +1,7 @@
 package com.example.paginex
 
 import androidx.compose.animation.core.*
+import kotlinx.coroutines.launch
 import androidx.compose.foundation.*
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.staggeredgrid.*
@@ -210,13 +211,13 @@ fun PreviewBadge() {
 
 @Composable
 fun StatusBadge(status: String) {
-    val glowColor = when (status) {
-        "Okundu" -> PaginexNeonTeal
-        "Okunuyor" -> PaginexNeonPurple
-        "Okunacak" -> Color(0xFFBB86FC)
-        "Bırakıldı" -> PaginexNeonPink
-        "Askıda" -> Color(0xFFD97706)
-        else -> Color.Gray
+    val (glowColor, text) = when (status) {
+        "Read" -> PaginexNeonTeal to status
+        "Reading" -> PaginexNeonPurple to status
+        "To Read" -> PaginexNeonPurple.copy(alpha = 0.5f) to status
+        "On Hold" -> Color(0xFFD97706) to status
+        "Dropped" -> PaginexNeonPink to status
+        else -> Color.Gray to status
     }
 
     Surface(
@@ -225,7 +226,7 @@ fun StatusBadge(status: String) {
         border = BorderStroke(1.dp, glowColor.copy(alpha = 0.3f))
     ) {
         Text(
-            text = status,
+            text = text,
             modifier = Modifier.padding(horizontal = 10.dp, vertical = 2.dp),
             style = MaterialTheme.typography.labelSmall,
             color = glowColor,
@@ -239,11 +240,34 @@ fun StatusBadge(status: String) {
 fun BookPostCard(
     post: Post, 
     onBookClick: (String) -> Unit = {},
+    onUserClick: (String) -> Unit = {},
     onEditClick: (String) -> Unit = {},
     onDeleteClick: (Post) -> Unit = {},
     onLikeClick: () -> Unit = {},
-    onSaveClick: () -> Unit = {}
+    onSaveClick: () -> Unit = {},
+    onCommentAdded: () -> Unit = {}
 ) {
+    var postAuthor by remember { mutableStateOf<FireUser?>(null) }
+    var isFollowing by remember { mutableStateOf(false) }
+    val scope = rememberCoroutineScope()
+
+    LaunchedEffect(post.userId) {
+        postAuthor = FirestoreService.getUserById(post.userId)
+        isFollowing = FirestoreService.isFollowing("u1", post.userId)
+    }
+
+    val timeAgo = remember(post.createdAt) {
+        val diff = System.currentTimeMillis() - post.createdAt
+        when {
+            diff < 60_000 -> "just now"
+            diff < 3600_000 -> "${diff / 60_000}m ago"
+            diff < 86400_000 -> "${diff / 3600_000}h ago"
+            diff < 2592000_000 -> "${diff / 86400_000}d ago"
+            diff < 31536000_000 -> "${diff / 2592000_000}mo ago"
+            else -> "${diff / 31536000_000}y ago"
+        }
+    }
+
     Card(
         modifier = Modifier
             .fillMaxWidth()
@@ -252,43 +276,66 @@ fun BookPostCard(
         colors = CardDefaults.cardColors(containerColor = Color.Transparent)
     ) {
         Column(modifier = Modifier.padding(16.dp)) {
-            // User Header
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 AsyncImage(
-                    model = "https://images.unsplash.com/photo-1494790108377-be9c29b29330?auto=format&fit=crop&q=80&w=200",
+                    model = postAuthor?.avatarUrl?.ifEmpty { "https://via.placeholder.com/200" } ?: "https://via.placeholder.com/200",
                     contentDescription = null,
                     modifier = Modifier
                         .size(48.dp)
                         .clip(CircleShape)
-                        .border(2.dp, PaginexNeonTeal, CircleShape),
+                        .border(2.dp, PaginexNeonTeal, CircleShape)
+                        .clickable { onUserClick(post.userId) },
                     contentScale = ContentScale.Crop
                 )
                 Spacer(modifier = Modifier.width(12.dp))
-                Column(modifier = Modifier.weight(1f)) {
+                Column(
+                    modifier = Modifier
+                        .weight(1f)
+                        .clickable { onUserClick(post.userId) }
+                ) {
                     Text(
-                        text = "Zeynep Kaya",
+                        text = postAuthor?.let { "${it.name} ${it.surname}" } ?: "Loading...",
                         fontWeight = FontWeight.Bold,
                         fontSize = 18.sp,
                         color = PaginexWhite
                     )
                     Text(
-                        text = "@zeynepkaya",
+                        text = postAuthor?.let { "@${it.username}" } ?: "@user",
                         fontSize = 14.sp,
                         color = Color.Gray
                     )
                 }
                 
-                var isFollowing by remember { mutableStateOf(false) }
-                if (post.userId != MockData.currentUser.id) {
+                if (post.userId != "u1") {
                     TextButton(
-                        onClick = { isFollowing = !isFollowing },
+                        onClick = {
+                            scope.launch {
+                                if (isFollowing) {
+                                    isFollowing = false
+                                    MockData.currentUser = MockData.currentUser.copy(
+                                        followingCount = (MockData.currentUser.followingCount - 1).coerceAtLeast(0)
+                                    )
+                                    kotlinx.coroutines.MainScope().launch {
+                                        FirestoreService.unfollowUser("u1", post.userId)
+                                    }
+                                } else {
+                                    isFollowing = true
+                                    MockData.currentUser = MockData.currentUser.copy(
+                                        followingCount = MockData.currentUser.followingCount + 1
+                                    )
+                                    kotlinx.coroutines.MainScope().launch {
+                                        FirestoreService.followUser("u1", post.userId)
+                                    }
+                                }
+                            }
+                        },
                         modifier = Modifier.padding(end = 4.dp)
                     ) {
                         Text(
-                            text = if (isFollowing) "Takibi Bırak" else "Takip Et",
+                            text = if (isFollowing) "Followed" else "Follow",
                             color = if (isFollowing) Color.Gray else PaginexNeonTeal,
                             fontSize = 13.sp,
                             fontWeight = FontWeight.Bold
@@ -310,7 +357,7 @@ fun BookPostCard(
                             modifier = Modifier.background(Color(0xFF1E1E2E))
                         ) {
                             DropdownMenuItem(
-                                text = { Text("Düzenle", color = PaginexWhite) },
+                                text = { Text("Edit", color = PaginexWhite) },
                                 onClick = {
                                     menuExpanded = false
                                     onEditClick(post.id)
@@ -318,7 +365,7 @@ fun BookPostCard(
                                 leadingIcon = { Icon(Icons.Default.Edit, null, tint = PaginexNeonTeal) }
                             )
                             DropdownMenuItem(
-                                text = { Text("Sil", color = PaginexNeonPink) },
+                                text = { Text("Delete", color = Color.Red) },
                                 onClick = {
                                     menuExpanded = false
                                     onDeleteClick(post)
@@ -450,7 +497,11 @@ fun BookPostCard(
                     )
                 }
                 if (showComments) {
-                    CommentsSheet(tableId = post.id, onDismiss = { showComments = false })
+                    CommentsSheet(
+                        tableId = post.id, 
+                        onDismiss = { showComments = false },
+                        onCommentAdded = onCommentAdded
+                    )
                 }
                 Spacer(modifier = Modifier.width(8.dp))
                 Text(post.commentsCount.toString(), color = PaginexWhite, fontSize = 16.sp)
@@ -469,7 +520,7 @@ fun BookPostCard(
             
             Spacer(modifier = Modifier.height(12.dp))
             Text(
-                text = "1 gün önce",
+                text = timeAgo,
                 fontSize = 12.sp,
                 color = Color.Gray
             )

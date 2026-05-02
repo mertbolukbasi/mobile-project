@@ -19,15 +19,23 @@ class MainActivity : ComponentActivity() {
             navigationBarStyle = SystemBarStyle.dark(AndroidColor.TRANSPARENT)
         )
         setContent {
-            var isDarkTheme by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(false) }
+            val context = androidx.compose.ui.platform.LocalContext.current
+            val sharedPrefs = androidx.compose.runtime.remember { context.getSharedPreferences("paginex_settings", android.content.Context.MODE_PRIVATE) }
+            var isDarkTheme by androidx.compose.runtime.remember { 
+                androidx.compose.runtime.mutableStateOf(sharedPrefs.getBoolean("is_dark_theme", true)) 
+            }
             
             LaunchedEffect(Unit) {
-                FirestoreService.initializeData()
+                FirestoreService.initializeData(forceReset = false) // Set to true to drop the db and write seed data unconditionally
                 FirestoreService.syncMockData()
             }
 
             androidx.compose.runtime.CompositionLocalProvider(
-                LocalThemeToggle provides { isDarkTheme = !isDarkTheme },
+                LocalThemeToggle provides { 
+                    val newTheme = !isDarkTheme
+                    isDarkTheme = newTheme
+                    sharedPrefs.edit().putBoolean("is_dark_theme", newTheme).apply()
+                },
                 androidx.compose.foundation.LocalOverscrollConfiguration provides null
             ) {
                 PaginexTheme(isDarkTheme = isDarkTheme) {

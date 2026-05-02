@@ -1,7 +1,7 @@
 {
     "logs": [
         {
-            "outputFile": "com.example.paginex.app-mergeDebugResources-60:/values-v29/values-v29.xml",
+            "outputFile": "com.example.paginex.app-mergeDebugResources-64:/values-v29/values-v29.xml",
             "map": [
                 {
                     "source": "/home/burak/.gradle/caches/transforms-3/3cb4927c421f3676e116df890921fecb/transformed/jetified-core-splashscreen-1.0.1/res/values-v29/values-v29.xml",

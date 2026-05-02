@@ -20,6 +20,7 @@ import androidx.compose.material3.*
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.runtime.*
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -73,6 +74,10 @@ sealed class Screen(val route: String, val icon: ImageVector? = null, val label:
     object BookLists : Screen("lists")
     object Drafts : Screen("drafts")
     object Constellation : Screen("constellation")
+    object Settings : Screen("settings")
+    object PublicProfile : Screen("public_profile/{userId}") {
+        fun createRoute(userId: String) = "public_profile/$userId"
+    }
 }
 
 // --- APP COMPONENT ---
@@ -198,7 +203,13 @@ fun PaginexApp() {
             composable(Screen.Home.route) { 
                 PaginexHomeScreen(
                     onNavigateToDetail = { postId -> navController.navigate("detail/$postId") },
-                    onNavigateToEdit = { postId -> navController.navigate("create-post?postId=$postId") }
+                    onNavigateToEdit = { postId -> navController.navigate("create-post?postId=$postId") },
+                    onNavigateToUser = { userId -> 
+                        if (userId == "u1" || userId == MockData.currentUser.id) navController.navigate(Screen.Profile.route)
+                        else {
+                            navController.navigate(Screen.PublicProfile.createRoute(userId))
+                        }
+                    }
                 ) 
             }
             composable(Screen.Explore.route) { ExploreScreen(onBookClick = { postId -> navController.navigate("detail/$postId") }) }
@@ -214,31 +225,34 @@ fun PaginexApp() {
                 CreatePostScreen(
                     initialPostId = postId,
                     onPost = { 
-                        navController.navigate("create-post?postId={postId}") {
-                            popUpTo("create-post?postId={postId}") { inclusive = true }
-                            launchSingleTop = true
-                        }
+                        navController.navigate(Screen.Home.route) { popUpTo(0) }
                     },
                     onDraftsClick = { navController.navigate(Screen.Drafts.route) }
                 ) 
             }
             composable(Screen.Saved.route) { SavedPostsScreen(onBookClick = { postId -> navController.navigate("detail/$postId") }) }
             composable(Screen.Profile.route) { PaginexProfileScreen(
-                onEditClick = { navController.navigate(Screen.EditProfile.route) },
-                onListsClick = { navController.navigate(Screen.BookLists.route) },
-                onConstellationClick = { navController.navigate(Screen.Constellation.route) },
-                onBookClick = { postId -> navController.navigate("detail/$postId?ownerOnly=true") },
-                onLogoutClick = { 
-                    navController.navigate(Screen.Login.route) { 
-                        popUpTo(0) { inclusive = true } 
-                    } 
-                }
+                onEditClick = { navController.navigate(Screen.Settings.route) },
+                onListsClick = { navController.navigate("book_lists/${MockData.currentUser.id.ifEmpty { "u1" }}") },
+                onConstellationClick = { navController.navigate("constellation/${MockData.currentUser.id.ifEmpty { "u1" }}") },
+                onBookClick = { postId -> navController.navigate("detail/$postId?ownerOnly=true") }
             ) }
             composable(Screen.EditProfile.route) { EditProfileScreen { navController.popBackStack() } }
-            composable(Screen.BookLists.route) { BookListsScreen { navController.popBackStack() } }
+            composable(
+                route = "book_lists/{userId}",
+                arguments = listOf(navArgument("userId") { type = NavType.StringType })
+            ) { backStackEntry -> 
+                val userId = backStackEntry.arguments?.getString("userId") ?: MockData.currentUser.id.ifEmpty { "u1" }
+                BookListsScreen(targetUserId = userId) { navController.popBackStack() } 
+            }
             composable(Screen.Drafts.route) { DraftsScreen { navController.popBackStack() } }
-            composable(Screen.Constellation.route) { 
+            composable(
+                route = "constellation/{userId}",
+                arguments = listOf(navArgument("userId") { type = NavType.StringType })
+            ) { backStackEntry -> 
+                val userId = backStackEntry.arguments?.getString("userId") ?: MockData.currentUser.id.ifEmpty { "u1" }
                 ConstellationScreen(
+                    targetUserId = userId,
                     onBack = { navController.popBackStack() },
                     onBookClick = { postId -> navController.navigate("detail/$postId") }
                 ) 
@@ -253,6 +267,185 @@ fun PaginexApp() {
                 val postId = backStackEntry.arguments?.getString("postId")
                 val ownerOnly = backStackEntry.arguments?.getBoolean("ownerOnly") ?: false
                 BookDetailScreen(postId, ownerOnly) { navController.popBackStack() } 
+            }
+            composable(Screen.Settings.route) { 
+                SettingsScreen(
+                    onNavigateToEditProfile = { navController.navigate(Screen.EditProfile.route) },
+                    onLogout = { navController.navigate(Screen.Login.route) { popUpTo(0) } },
+                    onBack = { navController.popBackStack() }
+                )
+            }
+            composable(
+                route = Screen.PublicProfile.route,
+                arguments = listOf(navArgument("userId") { type = NavType.StringType })
+            ) { backStackEntry ->
+                val userId = backStackEntry.arguments?.getString("userId") ?: ""
+                PublicProfileScreen(
+                    userId = userId,
+                    onBack = { navController.popBackStack() },
+                    onBookClick = { postId -> navController.navigate("detail/$postId") },
+                    onListsClick = { navController.navigate("book_lists/${userId}") },
+                    onConstellationClick = { navController.navigate("constellation/${userId}") }
+                )
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun EditFavoritesSheet(
+    currentFavorites: List<String>,
+    onDismiss: () -> Unit,
+    onSave: (List<String>) -> Unit
+) {
+    val selected = remember { mutableStateListOf<String>().apply { addAll(currentFavorites) } }
+    val allBooks = remember(MockData.readingStatuses.size) {
+        val currentUid = MockData.currentUser.id.ifEmpty { "u1" }
+        MockData.readingStatuses.filter { it.userId == currentUid }.map { it.book }.distinctBy { it.id }
+    }
+    var searchQuery by remember { mutableStateOf("") }
+
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        containerColor = PaginexSpace,
+        dragHandle = { BottomSheetDefaults.DragHandle(color = Color.Gray) }
+    ) {
+        Column(modifier = Modifier.fillMaxSize().padding(16.dp)) {
+            Text("Edit Favorite Books", color = PaginexWhite, fontSize = 20.sp, fontWeight = FontWeight.Bold)
+            Text("Select up to 5 books to show in your galaxy (${selected.size}/5)", color = Color.Gray, fontSize = 14.sp)
+            Spacer(modifier = Modifier.height(16.dp))
+
+            OutlinedTextField(
+                value = searchQuery,
+                onValueChange = { searchQuery = it },
+                modifier = Modifier.fillMaxWidth(),
+                placeholder = { Text("Search books...", color = Color.Gray) },
+                colors = OutlinedTextFieldDefaults.colors(
+                    focusedBorderColor = PaginexNeonPurple,
+                    unfocusedBorderColor = PaginexGlassBorder,
+                    focusedTextColor = PaginexWhite,
+                    unfocusedTextColor = PaginexWhite
+                )
+            )
+            Spacer(modifier = Modifier.height(16.dp))
+
+            LazyColumn(modifier = Modifier.weight(1f)) {
+                val filtered = allBooks.filter { it.title.lowercase().contains(searchQuery.lowercase()) }
+                items(filtered) { book ->
+                    val isSelected = selected.contains(book.id)
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable {
+                                if (isSelected) {
+                                    selected.remove(book.id)
+                                } else if (selected.size < 5) {
+                                    selected.add(book.id)
+                                }
+                            }
+                            .padding(vertical = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Checkbox(
+                            checked = isSelected,
+                            onCheckedChange = null,
+                            colors = CheckboxDefaults.colors(uncheckedColor = Color.Gray, checkedColor = PaginexNeonPurple)
+                        )
+                        Spacer(modifier = Modifier.width(16.dp))
+                        Text(book.title, color = PaginexWhite)
+                    }
+                }
+            }
+            
+            Button(
+                onClick = { onSave(selected) },
+                modifier = Modifier.fillMaxWidth(),
+                colors = ButtonDefaults.buttonColors(containerColor = PaginexNeonPurple)
+            ) {
+                Text("Save", color = Color.Black, fontWeight = FontWeight.Bold)
+            }
+            Spacer(modifier = Modifier.height(32.dp))
+        }
+    }
+}
+
+// --- GALAXY COMPONENT ---
+@Composable
+fun UserGalaxy(
+    user: User,
+    rotation: Float,
+    onBookClick: (String) -> Unit
+) {
+    val pOrbit = PaginexOrbit
+    Box(modifier = Modifier.size(300.dp), contentAlignment = Alignment.Center) {
+        // Sun Glow
+        Canvas(modifier = Modifier.fillMaxSize()) {
+            drawCircle(
+                brush = Brush.radialGradient(
+                    colors = listOf(Color(0xFFFFD700).copy(alpha = 0.25f), Color.Transparent),
+                    center = center,
+                    radius = size.width / 2
+                ),
+                radius = size.width / 2
+            )
+            // Orbit Rings
+            listOf(80.dp.toPx(), 110.dp.toPx(), 140.dp.toPx(), 165.dp.toPx()).forEach { r ->
+                drawCircle(
+                    color = pOrbit,
+                    radius = r,
+                    style = Stroke(width = 1f)
+                )
+            }
+        }
+
+        // Profile Photo
+        Box(
+            modifier = Modifier
+                .size(90.dp)
+                .clip(CircleShape)
+                .border(2.5.dp, Color(0xFFFFD700), CircleShape)
+        ) {
+            AsyncImage(
+                model = user.avatarUrl.ifEmpty { "https://via.placeholder.com/200" },
+                contentDescription = user.fullName,
+                modifier = Modifier.fillMaxSize(),
+                contentScale = ContentScale.Crop
+            )
+        }
+
+        // Orbiting Books (Favorites Only)
+        val favoriteBooks = remember(user.favoriteBooks, MockData.readingStatuses.size) {
+            val favIds = user.favoriteBooks.toSet()
+            val fromLibrary = MockData.readingStatuses.filter { it.userId == user.id && favIds.contains(it.book.id) }.map { it.book }
+            val fromSample = MockData.sampleBooks.filter { favIds.contains(it.id) && fromLibrary.none { lb -> lb.id == it.id } }
+            (fromLibrary + fromSample).take(5)
+        }
+        favoriteBooks.forEachIndexed { index, book ->
+            val orbitRadiusDp = listOf(110f, 140f, 80f, 165f, 125f).getOrElse(index) { 140f }
+            val speedMultiplier = 1f + (index * 0.2f)
+            val baseAngle = index * (360f / favoriteBooks.size.coerceAtLeast(1))
+            val angle = (rotation * speedMultiplier + baseAngle) % 360
+            val rad = Math.toRadians(angle.toDouble())
+            val xOffset = (orbitRadiusDp * cos(rad)).dp
+            val yOffset = (orbitRadiusDp * sin(rad)).dp
+
+            Box(
+                modifier = Modifier
+                    .offset(x = xOffset, y = yOffset)
+                    .clip(CircleShape),
+                contentAlignment = Alignment.Center
+            ) {
+                CosmicPlanet(
+                    book = book,
+                    size = 44.dp,
+                    glowColor = PaginexNeonTeal,
+                    isShattered = false,
+                    onClick = { 
+                        val p = MockData.feedPosts.find { it.book.id == book.id && it.userId == user.id }
+                        if (p != null) onBookClick(p.id)
+                    }
+                )
             }
         }
     }
@@ -373,21 +566,29 @@ fun LoginScreen(onLogin: () -> Unit) {
 @Composable
 fun PaginexHomeScreen(
     onNavigateToDetail: (String) -> Unit = {},
-    onNavigateToEdit: (String) -> Unit = {}
+    onNavigateToEdit: (String) -> Unit = {},
+    onNavigateToUser: (String) -> Unit = {}
 ) {
     val listState = rememberLazyListState()
-    var currentSortMode by remember { mutableStateOf("En Güncel") }
+    var currentSortMode by remember { mutableStateOf("Latest") }
     var isAscending by remember { mutableStateOf(true) }
     val scope = rememberCoroutineScope()
     
-    // Refresh data from Firestore on load
-    LaunchedEffect(Unit) {
-        FirestoreService.syncMockData()
+    // Refresh data from Firestore on load and when explicitly needed
+    var isRefreshing by remember { mutableStateOf(false) }
+    var refreshTrigger by remember { mutableStateOf(0) }
+    LaunchedEffect(refreshTrigger) {
+        if (refreshTrigger > 0) {
+            isRefreshing = true
+            FirestoreService.syncMockData()
+            isRefreshing = false
+            listState.animateScrollToItem(0)
+        }
     }
 
     val posts = when (currentSortMode) {
         "A-Z" -> if (isAscending) MockData.feedPosts.sortedBy { it.book.title } else MockData.feedPosts.sortedByDescending { it.book.title }
-        "Puan" -> {
+        "Rating" -> {
             val oneMonthAgo = System.currentTimeMillis() - (30L * 24 * 60 * 60 * 1000)
             val recentPuanPosts = MockData.feedPosts.filter { it.createdAt >= oneMonthAgo && it.rating > 0f }
                 .let { filtered ->
@@ -415,8 +616,11 @@ fun PaginexHomeScreen(
         else -> MockData.feedPosts.sortedByDescending { it.createdAt } // Default to most recent
     }
 
+    val snackbarHostState = remember { SnackbarHostState() }
+
     Scaffold(
         containerColor = PaginexSpace,
+        snackbarHost = { SnackbarHost(snackbarHostState) },
         topBar = { 
             CenterAlignedTopAppBar(
                 title = { 
@@ -425,7 +629,7 @@ fun PaginexHomeScreen(
                             painter = androidx.compose.ui.res.painterResource(id = R.drawable.ic_paginex_icon),
                             contentDescription = "Paginex Icon",
                             modifier = Modifier.size(48.dp),
-                            contentScale = ContentScale.Fit
+                            contentScale = ContentScale.Crop
                         )
                         Spacer(modifier = Modifier.width(12.dp))
                         Text(
@@ -454,10 +658,10 @@ fun PaginexHomeScreen(
                 modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                val sortOptions = listOf("En Güncel", "A-Z", "Puan")
+                val sortOptions = listOf("Latest", "A-Z", "Rating")
                 items(sortOptions) { option ->
                     val isSelected = currentSortMode == option
-                    val label = if ((option == "A-Z" || option == "Puan") && isSelected) {
+                    val label = if ((option == "A-Z" || option == "Rating") && isSelected) {
                         if (isAscending) "$option ↑" else "$option ↓"
                     } else option
                     
@@ -466,11 +670,10 @@ fun PaginexHomeScreen(
                         shape = RoundedCornerShape(16.dp),
                         border = BorderStroke(1.dp, if (isSelected) PaginexNeonPurple else PaginexGlassBorder),
                         modifier = Modifier.clickable { 
-                            if ((option == "A-Z" || option == "Puan") && currentSortMode == option) {
+                            if ((option == "A-Z" || option == "Rating") && currentSortMode == option) {
                                 isAscending = !isAscending
                             } else {
                                 currentSortMode = option
-                                // Default directions: A-Z is Ascending, Puan is Descending
                                 isAscending = option == "A-Z"
                             }
                         }
@@ -486,50 +689,81 @@ fun PaginexHomeScreen(
                 }
             }
 
-            LazyColumn(
-                state = listState,
-                modifier = Modifier.fillMaxSize(),
-                contentPadding = PaddingValues(top = 8.dp, bottom = 90.dp)
+            androidx.compose.material3.pulltorefresh.PullToRefreshBox(
+                isRefreshing = isRefreshing,
+                onRefresh = { refreshTrigger++ },
+                modifier = Modifier.fillMaxSize()
             ) {
-                items(posts, key = { it.id }) { post ->
-                    BookPostCard(
-                        post = post,
-                        onBookClick = { bookId -> onNavigateToDetail(post.id) },
-                        onEditClick = { postId -> onNavigateToEdit(postId) },
-                        onDeleteClick = { postToDelete -> 
-                            MockData.feedPosts.remove(postToDelete)
-                        },
-                        onLikeClick = {
-                            scope.launch {
-                                val success = FirestoreService.toggleLike(post.id, "u1")
-                                if (success) {
-                                    val index = MockData.feedPosts.indexOfFirst { it.id == post.id }
-                                    if (index != -1) {
-                                        val currentPost = MockData.feedPosts[index]
-                                        val newIsLiked = !currentPost.isLiked
-                                        MockData.feedPosts[index] = currentPost.copy(
-                                            isLiked = newIsLiked,
-                                            likesCount = if (newIsLiked) currentPost.likesCount + 1 else currentPost.likesCount - 1
-                                        )
+                LazyColumn(
+                    state = listState,
+                    modifier = Modifier.fillMaxSize(),
+                    contentPadding = PaddingValues(top = 8.dp, bottom = 90.dp)
+                ) {
+                    items(posts, key = { it.id }) { post ->
+                            BookPostCard(
+                                post = post,
+                                onBookClick = { bookId -> onNavigateToDetail(post.id) },
+                                onUserClick = onNavigateToUser,
+                                onEditClick = { postId -> onNavigateToEdit(postId) },
+                                onDeleteClick = { postToDelete ->
+                                val now = System.currentTimeMillis()
+                                val diff = now - postToDelete.createdAt
+                                if (diff > 5 * 60 * 1000) {
+                                    scope.launch {
+                                        snackbarHostState.showSnackbar("Posts can only be deleted within 5 minutes of creation.")
+                                    }
+                                } else {
+                                    // Update local cache immediately
+                                    MockData.feedPosts.removeAll { it.id == postToDelete.id }
+                                    // Write to Firestore in GlobalScope
+                                    kotlinx.coroutines.MainScope().launch {
+                                        FirestoreService.deletePost(postToDelete.id)
                                     }
                                 }
-                            }
-                        },
-                        onSaveClick = {
-                            scope.launch {
-                                val success = FirestoreService.toggleSave(post.id, "u1")
-                                if (success) {
-                                    val index = MockData.feedPosts.indexOfFirst { it.id == post.id }
-                                    if (index != -1) {
-                                        val currentPost = MockData.feedPosts[index]
-                                        MockData.feedPosts[index] = currentPost.copy(
-                                            isSaved = !currentPost.isSaved
-                                        )
-                                    }
+                            },
+                            onLikeClick = {
+                                // Update local cache immediately
+                                val index = MockData.feedPosts.indexOfFirst { it.id == post.id }
+                                if (index != -1) {
+                                    val currentPost = MockData.feedPosts[index]
+                                    val newIsLiked = !currentPost.isLiked
+                                    val newLikesCount = if (newIsLiked) currentPost.likesCount + 1 else (currentPost.likesCount - 1).coerceAtLeast(0)
+                                    MockData.feedPosts[index] = currentPost.copy(
+                                        isLiked = newIsLiked,
+                                        likesCount = newLikesCount
+                                    )
+                                }
+                                // Write to Firestore in GlobalScope
+                                kotlinx.coroutines.MainScope().launch {
+                                    FirestoreService.toggleLike(post.id, "u1")
+                                }
+                            },
+                            onSaveClick = {
+                                // Update local cache immediately
+                                val index = MockData.feedPosts.indexOfFirst { it.id == post.id }
+                                if (index != -1) {
+                                    val currentPost = MockData.feedPosts[index]
+                                    MockData.feedPosts[index] = currentPost.copy(
+                                        isSaved = !currentPost.isSaved
+                                    )
+                                }
+                                // Write to Firestore in GlobalScope
+                                kotlinx.coroutines.MainScope().launch {
+                                    FirestoreService.toggleSave(post.id, "u1")
+                                }
+                            },
+                            onCommentAdded = {
+                                val index = MockData.feedPosts.indexOfFirst { it.id == post.id }
+                                if (index != -1) {
+                                    val currentPost = MockData.feedPosts[index]
+                                    MockData.feedPosts[index] = currentPost.copy(
+                                        commentsCount = currentPost.commentsCount + 1
+                                    )
                                 }
                             }
-                        }
-                    )
+                        )
+                        Spacer(modifier = Modifier.height(16.dp))
+                    }
                 }
             }
         }
@@ -548,6 +782,11 @@ fun ExploreScreen(onBookClick: (String) -> Unit = {}) {
             repeatMode = RepeatMode.Restart
         )
     )
+
+    // Sync explore data from database
+    LaunchedEffect(Unit) {
+        FirestoreService.syncMockData()
+    }
 
     Column(modifier = Modifier.fillMaxSize().background(PaginexSpace)) {
         // Nebula Header
@@ -581,7 +820,7 @@ fun ExploreScreen(onBookClick: (String) -> Unit = {}) {
                 verticalArrangement = Arrangement.Bottom
             ) {
                 Text(
-                    "Evreni Keşfet",
+                    "Explore the Universe",
                     fontSize = 32.sp,
                     fontWeight = FontWeight.Black,
                     color = PaginexWhite,
@@ -593,7 +832,7 @@ fun ExploreScreen(onBookClick: (String) -> Unit = {}) {
                     value = "",
                     onValueChange = {},
                     modifier = Modifier.fillMaxWidth().height(48.dp),
-                    placeholder = { Text("Yıldız tozunda ara...", color = Color.Gray, fontSize = 14.sp) },
+                    placeholder = { Text("Search in stardust...", color = Color.Gray, fontSize = 14.sp) },
                     leadingIcon = { Icon(Icons.Default.Search, null, tint = PaginexWhite.copy(alpha = 0.5f), modifier = Modifier.size(20.dp)) },
                     shape = RoundedCornerShape(12.dp),
                     colors = OutlinedTextFieldDefaults.colors(
@@ -609,8 +848,8 @@ fun ExploreScreen(onBookClick: (String) -> Unit = {}) {
         Spacer(modifier = Modifier.height(16.dp))
 
         // Genre Categories
-        val genres = listOf("Hepsi", "Bilim Kurgu", "Distopya", "Klasik", "Roman", "Tarih", "Polisiye", "Sanat")
-        var selectedGenre by remember { mutableStateOf("Hepsi") }
+        val genres = listOf("All", "Sci-Fi", "Dystopia", "Classic", "Novel", "History", "Mystery", "Art")
+        var selectedGenre by remember { mutableStateOf("All") }
         
         LazyRow(
             contentPadding = PaddingValues(horizontal = 16.dp),
@@ -634,7 +873,7 @@ fun ExploreScreen(onBookClick: (String) -> Unit = {}) {
             horizontalArrangement = Arrangement.spacedBy(12.dp),
             verticalItemSpacing = 12.dp
         ) {
-            items(MockData.sampleBooks + MockData.sampleBooks.reversed()) { book ->
+            items(MockData.sampleBooks) { book ->
                 val randomHeight = remember { (200..350).random().dp }
                 Box(
                     modifier = Modifier
@@ -683,18 +922,28 @@ fun ExploreScreen(onBookClick: (String) -> Unit = {}) {
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun BookDetailScreen(postId: String?, ownerOnly: Boolean = false, onBack: () -> Unit) {
-    val initialPost = MockData.feedPosts.find { it.id == postId } ?: MockData.feedPosts[0]
+    val initialPost = MockData.feedPosts.find { it.id == postId } ?: MockData.feedPosts.firstOrNull() ?: return
     val book = initialPost.book
     val bookReviews = MockData.feedPosts.filter { 
         it.book.id == book.id && (!ownerOnly || it.userId == "u1")
     }
     val avgRating = if (bookReviews.isNotEmpty()) bookReviews.filter { it.rating > 0f }.map { it.rating }.average().let { if (it.isNaN()) 0f else it.toFloat() } else 0f
 
+    // Cache for reviewer user data
+    val reviewerCache = remember { mutableStateMapOf<String, FireUser?>() }
+    LaunchedEffect(bookReviews) {
+        bookReviews.map { it.userId }.distinct().forEach { uid ->
+            if (!reviewerCache.containsKey(uid)) {
+                reviewerCache[uid] = FirestoreService.getUserById(uid)
+            }
+        }
+    }
+
     Scaffold(
         containerColor = PaginexSpace,
         topBar = { 
             TopAppBar(
-                title = { Text("Gezegen Detayı", color = PaginexWhite) },
+                title = { Text("Planet Detail", color = PaginexWhite) },
                 navigationIcon = { IconButton(onClick = onBack) { Icon(Icons.Default.ArrowBack, null, tint = PaginexWhite) } },
                 colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.Transparent)
             ) 
@@ -713,7 +962,7 @@ fun BookDetailScreen(postId: String?, ownerOnly: Boolean = false, onBack: () -> 
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Icon(Icons.Default.DateRange, contentDescription = null, tint = Color.Gray, modifier = Modifier.size(16.dp))
                 Spacer(modifier = Modifier.width(4.dp))
-                Text("Yayın Yılı: ${book.publishYear}", color = Color.Gray, fontSize = 14.sp)
+                Text("Year: ${book.publishYear}", color = Color.Gray, fontSize = 14.sp)
                 
                 Spacer(modifier = Modifier.width(16.dp))
                 
@@ -744,10 +993,10 @@ fun BookDetailScreen(postId: String?, ownerOnly: Boolean = false, onBack: () -> 
             Spacer(modifier = Modifier.height(24.dp))
             
             // Book Summary
-            Text("Kitap Özeti", color = PaginexWhite, fontSize = 18.sp, fontWeight = FontWeight.Bold)
+            Text("Book Summary", color = PaginexWhite, fontSize = 18.sp, fontWeight = FontWeight.Bold)
             Spacer(modifier = Modifier.height(8.dp))
             Text(
-                text = if (book.summary.isNotEmpty()) book.summary else "Bu kitap için henüz ufuk açıcı bir özet bulunmuyor...",
+                text = if (book.summary.isNotEmpty()) book.summary else "No summary available for this book yet...",
                 color = PaginexWhite.copy(alpha = 0.8f),
                 fontSize = 14.sp,
                 lineHeight = 22.sp
@@ -756,7 +1005,7 @@ fun BookDetailScreen(postId: String?, ownerOnly: Boolean = false, onBack: () -> 
             Spacer(modifier = Modifier.height(32.dp))
             
             // Reviews
-            Text("Yolculuk Notları (${bookReviews.size})", color = PaginexWhite, fontSize = 18.sp, fontWeight = FontWeight.Bold)
+            Text("Journey Notes (${bookReviews.size})", color = PaginexWhite, fontSize = 18.sp, fontWeight = FontWeight.Bold)
             Spacer(modifier = Modifier.height(16.dp))
             
             bookReviews.forEach { reviewPost ->
@@ -768,15 +1017,15 @@ fun BookDetailScreen(postId: String?, ownerOnly: Boolean = false, onBack: () -> 
                 ) {
                     Column(modifier = Modifier.padding(16.dp)) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
-                            val user = MockData.currentUser
+                            val reviewer = reviewerCache[reviewPost.userId]
                             AsyncImage(
-                                model = if (reviewPost.userId == "u1") user.avatarUrl else "https://images.unsplash.com/photo-1494790108377-be9c29b29330?auto=format&fit=crop&q=80&w=200", 
+                                model = reviewer?.avatarUrl?.ifEmpty { "https://via.placeholder.com/200" } ?: "https://via.placeholder.com/200", 
                                 contentDescription = null,
                                 modifier = Modifier.size(32.dp).clip(CircleShape),
                                 contentScale = ContentScale.Crop
                             )
                             Spacer(modifier = Modifier.width(8.dp))
-                            Text(if (reviewPost.userId == "u1") user.username else "kullanıcı_${reviewPost.userId}", color = PaginexWhite, fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                            Text(reviewer?.let { "@${it.username}" } ?: "@user", color = PaginexWhite, fontWeight = FontWeight.Bold, fontSize = 14.sp)
                             
                             Spacer(modifier = Modifier.weight(1f))
                             
@@ -805,11 +1054,11 @@ fun BookDetailScreen(postId: String?, ownerOnly: Boolean = false, onBack: () -> 
 
 @Composable
 fun PaginexProfileScreen(
-    onEditClick: () -> Unit,
+    onEditClick: () -> Unit, // This will now go to SettingsScreen
     onListsClick: () -> Unit,
     onConstellationClick: () -> Unit,
     onBookClick: (String) -> Unit,
-    onLogoutClick: () -> Unit = {}
+    onLogoutClick: () -> Unit = {} // This might not be needed directly here anymore, but keeping it
 ) {
     val user = MockData.currentUser
     val infiniteTransition = rememberInfiniteTransition()
@@ -822,31 +1071,23 @@ fun PaginexProfileScreen(
         )
     )
     var showAddBookDialog by remember { mutableStateOf(false) }
-    val currentlyReading = MockData.feedPosts.filter { it.status == "Okunuyor" && it.userId == "u1" }
+    val currentlyReading = MockData.readingStatuses.filter { it.status == "Reading" && it.userId == (MockData.currentUser.id.ifEmpty { "u1" }) }
+    val scope = rememberCoroutineScope()
 
     Box(modifier = Modifier.fillMaxSize().background(PaginexSpace)) {
-        // Logout Icon in top-left corner
-        IconButton(
-            onClick = onLogoutClick,
-            modifier = Modifier
-                .align(Alignment.TopStart)
-                .padding(top = 8.dp, start = 8.dp)
-                .zIndex(10f)
-                .background(PaginexGlass, CircleShape)
-        ) {
-            Icon(Icons.Default.ExitToApp, contentDescription = "Çıkış Yap", tint = Color.Red.copy(alpha = 0.8f))
-        }
+        // Logout Icon removed, moved to Settings.
+        // Instead, the top-right gear icon goes to Settings
 
         // Settings Icon in top-right corner
         IconButton(
-            onClick = onEditClick,
+            onClick = onEditClick, // This corresponds to nav to Settings
             modifier = Modifier
                 .align(Alignment.TopEnd)
                 .padding(top = 8.dp, end = 8.dp)
                 .zIndex(10f)
                 .background(PaginexGlass, CircleShape)
         ) {
-            Icon(Icons.Default.Settings, contentDescription = "Ayarlar", tint = PaginexWhite.copy(alpha = 0.7f))
+            Icon(Icons.Default.Settings, contentDescription = "Settings", tint = PaginexWhite.copy(alpha = 0.7f))
         }
 
         Column(
@@ -859,77 +1100,28 @@ fun PaginexProfileScreen(
             Spacer(modifier = Modifier.height(24.dp))
 
             // ---- GALAXY VISUALIZATION ----
-            val pOrbit = PaginexOrbit
-            Box(modifier = Modifier.size(300.dp), contentAlignment = Alignment.Center) {
-                // Sun Glow
-                Canvas(modifier = Modifier.fillMaxSize()) {
-                    drawCircle(
-                        brush = Brush.radialGradient(
-                            colors = listOf(Color(0xFFFFD700).copy(alpha = 0.25f), Color.Transparent),
-                            center = center,
-                            radius = size.width / 2
-                        ),
-                        radius = size.width / 2
-                    )
-                    // Orbit Rings
-                    listOf(80.dp.toPx(), 110.dp.toPx(), 140.dp.toPx(), 165.dp.toPx()).forEach { r ->
-                        drawCircle(
-                            color = pOrbit,
-                            radius = r,
-                            style = Stroke(width = 1f)
-                        )
-                    }
-                }
+            UserGalaxy(user = user, rotation = rotation, onBookClick = onBookClick)
 
-                // Profile Photo (NOT clickable, it was confusing)
-                Box(
-                    modifier = Modifier
-                        .size(90.dp)
-                        .clip(CircleShape)
-                        .border(2.5.dp, Color(0xFFFFD700), CircleShape)
-                ) {
-                    AsyncImage(
-                        model = user.avatarUrl,
-                        contentDescription = user.fullName,
-                        modifier = Modifier.fillMaxSize(),
-                        contentScale = ContentScale.Crop
-                    )
-                }
+            Spacer(modifier = Modifier.height(12.dp))
 
-                // Orbiting Books (Favorites Only)
-                val favoriteBooks = MockData.feedPosts.filter { it.userId == user.id && it.rating >= 8f }.sortedByDescending { it.rating }.distinctBy { it.book.id }.take(4)
-                favoriteBooks.forEachIndexed { index, post ->
-                    val orbitRadiusDp = when {
-                        post.rating >= 9.5f -> 80f
-                        post.rating >= 9.0f -> 110f
-                        post.rating >= 8.5f -> 140f
-                        else -> 165f
-                    }
-                    val speedMultiplier = 1f + (index * 0.2f)
-                    // If favoriteBooks is empty we won't loop. If it has element, size is safe to divide.
-                    val baseAngle = index * (360f / favoriteBooks.size.coerceAtLeast(1))
-                    val angle = (rotation * speedMultiplier + baseAngle) % 360
-                    val rad = Math.toRadians(angle.toDouble())
-                    val xOffset = (orbitRadiusDp * cos(rad)).dp
-                    val yOffset = (orbitRadiusDp * sin(rad)).dp
-
-                    Box(
-                        modifier = Modifier
-                            .offset(x = xOffset, y = yOffset)
-                            .clip(CircleShape),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                            CosmicPlanet(
-                                book = post.book,
-                                size = 44.dp,
-                                glowColor = PaginexNeonTeal,
-                                isShattered = false,
-                                onClick = { onBookClick(post.id) }
-                            )
+            var showFavoritesDialog by remember { mutableStateOf(false) }
+            TextButton(onClick = { showFavoritesDialog = true }) {
+                Text("Edit Favorites (${user.favoriteBooks.size}/5)", color = PaginexNeonPurple)
+            }
+            if (showFavoritesDialog) {
+                EditFavoritesSheet(
+                    currentFavorites = user.favoriteBooks,
+                    onDismiss = { showFavoritesDialog = false },
+                    onSave = { selectedIds ->
+                        // Update local cache immediately
+                        MockData.currentUser = MockData.currentUser.copy(favoriteBooks = selectedIds)
+                        showFavoritesDialog = false
+                        // Write to Firestore in GlobalScope
+                        kotlinx.coroutines.MainScope().launch {
+                            FirestoreService.updateFavoriteBooks("u1", selectedIds)
                         }
                     }
-                }
+                )
             }
 
             Spacer(modifier = Modifier.height(12.dp))
@@ -962,36 +1154,44 @@ fun PaginexProfileScreen(
             // Stats Row
             var showFollowers by remember { mutableStateOf(false) }
             var showFollowing by remember { mutableStateOf(false) }
+            var showLibrary by remember { mutableStateOf(false) }
             
             Row(
                 modifier = Modifier.fillMaxWidth().padding(horizontal = 32.dp),
                 horizontalArrangement = Arrangement.SpaceEvenly
             ) {
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Text("${MockData.feedPosts.count { it.status == "Okundu" }}", fontWeight = FontWeight.ExtraBold, color = PaginexNeonTeal, fontSize = 20.sp)
-                    Text("Okundu", fontSize = 11.sp, color = Color.Gray)
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    modifier = Modifier.clickable { showLibrary = true }
+                ) {
+                    Text("${MockData.readingStatuses.count { it.userId == user.id }}", fontWeight = FontWeight.ExtraBold, color = PaginexNeonTeal, fontSize = 20.sp)
+                    Text("Books", fontSize = 11.sp, color = Color.Gray)
                 }
                 Column(
                     horizontalAlignment = Alignment.CenterHorizontally,
                     modifier = Modifier.clickable { showFollowers = true }
                 ) {
                     Text("${user.followersCount}", fontWeight = FontWeight.ExtraBold, color = PaginexWhite, fontSize = 20.sp)
-                    Text("Takipçi", fontSize = 11.sp, color = Color.Gray)
+                    Text("Followers", fontSize = 11.sp, color = Color.Gray)
                 }
                 Column(
                     horizontalAlignment = Alignment.CenterHorizontally,
                     modifier = Modifier.clickable { showFollowing = true }
                 ) {
                     Text("${user.followingCount}", fontWeight = FontWeight.ExtraBold, color = PaginexWhite, fontSize = 20.sp)
-                    Text("Takip", fontSize = 11.sp, color = Color.Gray)
+                    Text("Following", fontSize = 11.sp, color = Color.Gray)
                 }
             }
 
+            if (showLibrary) {
+                UserLibrarySheet(targetUserId = user.id, onDismiss = { showLibrary = false })
+            }
+
             if (showFollowers) {
-                UserListSheet("Takipçiler", onDismiss = { showFollowers = false })
+                UserListSheet("Followers", onDismiss = { showFollowers = false })
             }
             if (showFollowing) {
-                UserListSheet("Takip Edilenler", onDismiss = { showFollowing = false })
+                UserListSheet("Following", onDismiss = { showFollowing = false })
             }
 
             Spacer(modifier = Modifier.height(20.dp))
@@ -1011,7 +1211,7 @@ fun PaginexProfileScreen(
                 ) {
                     Icon(Icons.Default.Add, null, tint = Color.Black, modifier = Modifier.size(14.dp))
                     Spacer(modifier = Modifier.width(4.dp))
-                    Text("Kitap Ekle", color = Color.Black, fontWeight = FontWeight.Bold, fontSize = 11.sp)
+                    Text("Add Book", color = Color.Black, fontWeight = FontWeight.Bold, fontSize = 11.sp)
                 }
                 // Book Lists Button
                 OutlinedButton(
@@ -1023,7 +1223,7 @@ fun PaginexProfileScreen(
                 ) {
                     Icon(Icons.Default.List, null, tint = PaginexNeonPurple, modifier = Modifier.size(14.dp))
                     Spacer(modifier = Modifier.width(4.dp))
-                    Text("Listelerim", color = PaginexNeonPurple, fontWeight = FontWeight.Bold, fontSize = 11.sp)
+                    Text("My Lists", color = PaginexNeonPurple, fontWeight = FontWeight.Bold, fontSize = 11.sp)
                 }
             }
 
@@ -1036,44 +1236,15 @@ fun PaginexProfileScreen(
             ) {
                 Icon(Icons.Default.Star, null, tint = Color(0xFFFFD700), modifier = Modifier.size(16.dp))
                 Spacer(modifier = Modifier.width(6.dp))
-                Text("Takım Yıldızı Haritasını Gör", color = Color(0xFFFFD700), fontSize = 13.sp)
+                Text("View Constellation Map", color = Color(0xFFFFD700), fontSize = 13.sp)
             }
 
-            // Favourite Books Section (from FavouriteBooks schema)
-            Spacer(modifier = Modifier.height(16.dp))
-            Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp)) {
-                Text(
-                    "FAVORİ YILDIZLAR",
-                    color = PaginexWhite,
-                    fontSize = 11.sp,
-                    fontWeight = FontWeight.Black,
-                    letterSpacing = 2.sp
-                )
-                Spacer(modifier = Modifier.height(12.dp))
-                LazyRow(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                    items(MockData.sampleBooks.take(5)) { book ->
-                        Box(
-                            modifier = Modifier
-                                .size(80.dp, 120.dp)
-                                .clip(RoundedCornerShape(12.dp))
-                                .border(1.dp, PaginexGlassBorder, RoundedCornerShape(12.dp))
-                                .clickable { onBookClick("p1") }
-                        ) {
-                            AsyncImage(
-                                model = book.coverUrl,
-                                contentDescription = null,
-                                modifier = Modifier.fillMaxSize(),
-                                contentScale = ContentScale.Crop
-                            )
-                        }
-                    }
-                }
-            }
+
 
             Spacer(modifier = Modifier.height(20.dp))
 
 
-            // ---- OKUNUYOR SECTION ----
+            // ---- READING SECTION ----
             if (currentlyReading.isNotEmpty()) {
                 Spacer(modifier = Modifier.height(20.dp))
                 Card(
@@ -1096,7 +1267,7 @@ fun PaginexProfileScreen(
                             )
                             Spacer(modifier = Modifier.width(8.dp))
                             Text(
-                                "ŞU AN OKUYOR",
+                                "CURRENTLY READING",
                                 color = PaginexNeonPurple,
                                 fontWeight = FontWeight.ExtraBold,
                                 fontSize = 11.sp,
@@ -1104,10 +1275,10 @@ fun PaginexProfileScreen(
                             )
                         }
                         Spacer(modifier = Modifier.height(12.dp))
-                        currentlyReading.forEach { post ->
+                        currentlyReading.forEach { rs ->
                             Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(bottom = 8.dp)) {
                                 AsyncImage(
-                                    model = post.book.coverUrl,
+                                    model = rs.book.coverUrl.ifEmpty { R.drawable.ic_paginex_icon },
                                     contentDescription = null,
                                     modifier = Modifier
                                         .size(44.dp, 64.dp)
@@ -1116,9 +1287,73 @@ fun PaginexProfileScreen(
                                 )
                                 Spacer(modifier = Modifier.width(12.dp))
                                 Column {
-                                    Text(post.book.title, color = PaginexWhite, fontWeight = FontWeight.Bold, fontSize = 14.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                                    Text(post.book.author, color = Color.Gray, fontSize = 12.sp)
-                                    Text(post.book.genre, color = PaginexNeonPurple.copy(alpha = 0.7f), fontSize = 11.sp)
+                                    Text(rs.book.title, color = PaginexWhite, fontWeight = FontWeight.Bold, fontSize = 14.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                    Text(rs.book.author, color = Color.Gray, fontSize = 12.sp)
+                                    Text(rs.book.genre, color = PaginexNeonPurple.copy(alpha = 0.7f), fontSize = 11.sp)
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+
+            // ---- MY POSTS SECTION ----
+            val myPosts = MockData.feedPosts.filter { it.userId == (user.id.ifEmpty { "u1" }) }
+            if (myPosts.isNotEmpty()) {
+                Spacer(modifier = Modifier.height(20.dp))
+                Card(
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp),
+                    colors = CardDefaults.cardColors(containerColor = PaginexNeonTeal.copy(alpha = 0.06f)),
+                    shape = RoundedCornerShape(20.dp),
+                    border = BorderStroke(1.dp, PaginexNeonTeal.copy(alpha = 0.3f))
+                ) {
+                    Column(modifier = Modifier.padding(16.dp)) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(Icons.Default.Edit, null, tint = PaginexNeonTeal, modifier = Modifier.size(14.dp))
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(
+                                "MY POSTS",
+                                color = PaginexNeonTeal,
+                                fontWeight = FontWeight.ExtraBold,
+                                fontSize = 11.sp,
+                                letterSpacing = 2.sp
+                            )
+                            Spacer(modifier = Modifier.weight(1f))
+                            Text("${myPosts.size}", color = PaginexNeonTeal.copy(alpha = 0.7f), fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                        }
+                        Spacer(modifier = Modifier.height(12.dp))
+                        myPosts.take(10).forEach { post ->
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                modifier = Modifier
+                                    .padding(bottom = 10.dp)
+                                    .clip(RoundedCornerShape(10.dp))
+                                    .background(PaginexGlass)
+                                    .clickable { onBookClick(post.id) }
+                                    .padding(10.dp)
+                                    .fillMaxWidth()
+                            ) {
+                                AsyncImage(
+                                    model = post.book.coverUrl.ifEmpty { R.drawable.ic_paginex_icon },
+                                    contentDescription = null,
+                                    modifier = Modifier
+                                        .size(40.dp, 58.dp)
+                                        .clip(RoundedCornerShape(6.dp)),
+                                    contentScale = ContentScale.Crop
+                                )
+                                Spacer(modifier = Modifier.width(12.dp))
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(post.book.title, color = PaginexWhite, fontWeight = FontWeight.Bold, fontSize = 13.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                    if (post.review.isNotEmpty()) {
+                                        Text(post.review, color = Color.Gray, fontSize = 11.sp, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                                    }
+                                }
+                                if (post.rating > 0f) {
+                                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                        Icon(Icons.Default.Star, null, tint = Color(0xFFFFD700), modifier = Modifier.size(14.dp))
+                                        Text("${post.rating.toInt()}/10", fontSize = 10.sp, color = Color(0xFFFFD700), fontWeight = FontWeight.Bold)
+                                    }
                                 }
                             }
                         }
@@ -1134,7 +1369,27 @@ fun PaginexProfileScreen(
     if (showAddBookDialog) {
         AddBookToLibraryDialog(
             onDismiss = { showAddBookDialog = false },
-            onBookAdded = { book, status -> showAddBookDialog = false }
+            onBookAdded = { book, status ->
+                val uid = user.id.ifEmpty { "u1" }
+                // Optimistically add to local cache
+                val newStatus = ReadingStatus(
+                    id = "rs_${System.currentTimeMillis()}",
+                    userId = uid,
+                    book = book,
+                    status = status
+                )
+                val existingIndex = MockData.readingStatuses.indexOfFirst { it.userId == uid && it.book.id == book.id }
+                if (existingIndex != -1) {
+                    MockData.readingStatuses[existingIndex] = newStatus
+                } else {
+                    MockData.readingStatuses.add(newStatus)
+                }
+                // Write to Firestore in GlobalScope (survives composable lifecycle)
+                kotlinx.coroutines.MainScope().launch {
+                    FirestoreService.addBookToLibrary(uid, book.id, status)
+                }
+                showAddBookDialog = false 
+            }
         )
     }
 }
@@ -1142,25 +1397,26 @@ fun PaginexProfileScreen(
 @Composable
 fun EditProfileScreen(onSave: () -> Unit) {
     val user = MockData.currentUser
+    var email by remember { mutableStateOf("user@paginex.com") } // Placeholder
     var name by remember { mutableStateOf(user.fullName) }
-    var bio by remember { mutableStateOf(user.bio) }
+    var oldPassword by remember { mutableStateOf("") }
+    var newPassword by remember { mutableStateOf("") }
 
     Box(modifier = Modifier.fillMaxSize().background(PaginexSpace)) {
-        // Starfield background could be added here too
-        
         Column(
             modifier = Modifier
                 .fillMaxSize()
+                .imePadding()
                 .padding(24.dp)
                 .verticalScroll(rememberScrollState())
         ) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                IconButton(onClick = onSave) {
+                IconButton(onClick = onSave, modifier = Modifier.padding(end = 16.dp)) {
                     Icon(Icons.Default.ArrowBack, null, tint = PaginexWhite)
                 }
                 Text(
-                    "Profili Düzenle",
-                    fontSize = 28.sp,
+                    "Edit profile",
+                    fontSize = 24.sp,
                     fontWeight = FontWeight.Bold,
                     color = PaginexWhite,
                     modifier = Modifier.weight(1f)
@@ -1170,44 +1426,48 @@ fun EditProfileScreen(onSave: () -> Unit) {
             Spacer(modifier = Modifier.height(32.dp))
             
             // Avatar Edit
-            Box(modifier = Modifier.align(Alignment.CenterHorizontally)) {
+            Column(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
                 AsyncImage(
-                    model = user.avatarUrl,
+                    model = user.avatarUrl.ifEmpty { "https://via.placeholder.com/200" },
                     contentDescription = null,
                     modifier = Modifier
-                        .size(120.dp)
+                        .size(100.dp)
                         .clip(CircleShape)
                         .border(2.dp, PaginexNeonPurple, CircleShape),
                     contentScale = ContentScale.Crop
                 )
-                Surface(
-                    modifier = Modifier.align(Alignment.BottomEnd).size(36.dp),
-                    shape = CircleShape,
-                    color = PaginexNeonPurple
-                ) {
-                    Icon(Icons.Default.Edit, null, tint = Color.Black, modifier = Modifier.padding(8.dp))
-                }
+                Spacer(modifier = Modifier.height(12.dp))
+                Text("Edit image", color = PaginexNeonTeal, fontSize = 14.sp, fontWeight = FontWeight.Bold)
             }
             
             Spacer(modifier = Modifier.height(40.dp))
             
             // Form Fields
-            CosmicInputField(label = "Ad Soyad", value = name, onValueChange = { name = it })
-            Spacer(modifier = Modifier.height(24.dp))
-            CosmicInputField(label = "Biyografi", value = bio, onValueChange = { bio = it }, isLongText = true)
-            Spacer(modifier = Modifier.height(24.dp))
-            CosmicInputField(label = "Doğum Tarihi", value = "01/01/1990", onValueChange = { })
+            CosmicInputField(label = "Email address", value = email, onValueChange = { email = it })
+            Spacer(modifier = Modifier.height(16.dp))
+            CosmicInputField(label = "Name", value = name, onValueChange = { name = it })
+            
+            Spacer(modifier = Modifier.height(32.dp))
+            Text("Change password", color = PaginexWhite, fontWeight = FontWeight.Bold, fontSize = 18.sp)
+            Spacer(modifier = Modifier.height(16.dp))
+            
+            CosmicInputField(label = "Old password", value = oldPassword, onValueChange = { oldPassword = it })
+            Spacer(modifier = Modifier.height(16.dp))
+            CosmicInputField(label = "New password", value = newPassword, onValueChange = { newPassword = it })
             
             Spacer(modifier = Modifier.height(48.dp))
             
             Button(
                 onClick = onSave, 
-                modifier = Modifier.fillMaxWidth().height(60.dp),
+                modifier = Modifier.align(Alignment.CenterHorizontally).height(50.dp).width(200.dp),
                 colors = ButtonDefaults.buttonColors(containerColor = PaginexNeonPurple),
-                shape = RoundedCornerShape(30.dp),
+                shape = RoundedCornerShape(25.dp),
                 elevation = ButtonDefaults.buttonElevation(defaultElevation = 0.dp)
             ) { 
-                Text("DEĞİŞİKLİKLERİ KAYDET", fontWeight = FontWeight.ExtraBold, letterSpacing = 1.sp, color = Color.Black) 
+                Text("Save", fontWeight = FontWeight.ExtraBold, letterSpacing = 1.sp, color = Color.Black) 
             }
         }
     }
@@ -1247,14 +1507,14 @@ fun SavedPostsScreen(onBookClick: (String) -> Unit = {}) {
     var isAscending by remember { mutableStateOf(true) }
     
     val uniqueBooks = MockData.feedPosts
-        .filter { it.isSaved && it.book.title.contains(searchQuery, ignoreCase = true) }
+        .filter { it.isSaved && it.book.title.lowercase().startsWith(searchQuery.lowercase()) }
         .distinctBy { it.book.id }
         .let { posts ->
             if (isAscending) posts.sortedBy { it.book.title } else posts.sortedByDescending { it.book.title }
         }
 
     Column(modifier = Modifier.fillMaxSize().background(PaginexSpace).padding(16.dp)) {
-        Text("Kaydedilen Yıldızlar", fontSize = 24.sp, fontWeight = FontWeight.Bold, color = PaginexWhite)
+        Text("Saved Stars", fontSize = 24.sp, fontWeight = FontWeight.Bold, color = PaginexWhite)
         Spacer(modifier = Modifier.height(16.dp))
         
         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -1262,7 +1522,7 @@ fun SavedPostsScreen(onBookClick: (String) -> Unit = {}) {
                 value = searchQuery,
                 onValueChange = { searchQuery = it },
                 modifier = Modifier.weight(1f),
-                placeholder = { Text("Kitap ara...", color = Color.Gray) },
+                placeholder = { Text("Search book...", color = Color.Gray) },
                 leadingIcon = { Icon(Icons.Default.Search, null, tint = Color.Gray) },
                 colors = OutlinedTextFieldDefaults.colors(
                     focusedBorderColor = PaginexNeonPurple,
@@ -1308,24 +1568,33 @@ fun SavedPostsScreen(onBookClick: (String) -> Unit = {}) {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun BookListsScreen(onBack: () -> Unit) {
-    val bookLists = remember { MockData.sampleBookLists }
+fun BookListsScreen(targetUserId: String, onBack: () -> Unit) {
+    val isOwner = targetUserId == (MockData.currentUser.id.ifEmpty { "u1" })
+    val bookLists = remember(MockData.sampleBookLists.size, targetUserId) {
+        MockData.sampleBookLists.filter { it.userId == targetUserId }
+    }
     var showCreateDialog by remember { mutableStateOf(false) }
     var selectedListForAdd by remember { mutableStateOf<BookList?>(null) }
+
+    LaunchedEffect(Unit) {
+        FirestoreService.syncMockData()
+    }
 
     Scaffold(
         containerColor = PaginexSpace,
         topBar = {
             TopAppBar(
-                title = { Text("Kitap Listelerim", color = PaginexWhite, fontWeight = FontWeight.Bold) },
+                title = { Text("My Book Lists", color = PaginexWhite, fontWeight = FontWeight.Bold) },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
                         Icon(Icons.Default.ArrowBack, null, tint = PaginexWhite)
                     }
                 },
                 actions = {
-                    IconButton(onClick = { showCreateDialog = true }) {
-                        Icon(Icons.Default.Add, null, tint = PaginexNeonPurple)
+                    if (isOwner) {
+                        IconButton(onClick = { showCreateDialog = true }) {
+                            Icon(Icons.Default.Add, null, tint = PaginexNeonPurple)
+                        }
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.Transparent)
@@ -1340,6 +1609,7 @@ fun BookListsScreen(onBack: () -> Unit) {
             items(bookLists, key = { it.id }) { list ->
                 BookListCard(
                     bookList = list,
+                    isOwner = isOwner,
                     onAddBook = { selectedListForAdd = list }
                 )
             }
@@ -1350,16 +1620,13 @@ fun BookListsScreen(onBack: () -> Unit) {
         CreateBookListDialog(
             onDismiss = { showCreateDialog = false },
             onCreate = { name, desc ->
-                MockData.sampleBookLists.add(
-                    BookList(
-                        id = "bl_${System.currentTimeMillis()}",
-                        name = name,
-                        description = desc,
-                        coverUrl = "",
-                        books = mutableListOf()
-                    )
-                )
-                showCreateDialog = false
+                kotlinx.coroutines.MainScope().launch {
+                    val newList = FirestoreService.createBookList(name, desc, targetUserId)
+                    if (newList != null) {
+                        MockData.sampleBookLists.add(newList)
+                    }
+                    showCreateDialog = false
+                }
             }
         )
     }
@@ -1369,15 +1636,20 @@ fun BookListsScreen(onBack: () -> Unit) {
             bookList = list,
             onDismiss = { selectedListForAdd = null },
             onBookAdded = { book ->
-                list.books.add(book)
-                selectedListForAdd = null
+                kotlinx.coroutines.MainScope().launch {
+                    val success = FirestoreService.addBookToList(list.id, book.id)
+                    if (success) {
+                        list.books.add(book)
+                    }
+                    selectedListForAdd = null
+                }
             }
         )
     }
 }
 
 @Composable
-fun BookListCard(bookList: BookList, onAddBook: () -> Unit) {
+fun BookListCard(bookList: BookList, isOwner: Boolean, onAddBook: () -> Unit) {
     Card(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(20.dp),
@@ -1411,10 +1683,12 @@ fun BookListCard(bookList: BookList, onAddBook: () -> Unit) {
                     if (bookList.description.isNotEmpty()) {
                         Text(bookList.description, fontSize = 12.sp, color = Color.Gray, maxLines = 1)
                     }
-                    Text("${bookList.books.size} kitap", fontSize = 12.sp, color = PaginexNeonPurple.copy(alpha = 0.8f))
+                    Text("${bookList.books.size} books", fontSize = 12.sp, color = PaginexNeonPurple.copy(alpha = 0.8f))
                 }
-                IconButton(onClick = onAddBook) {
-                    Icon(Icons.Default.Add, null, tint = PaginexNeonPurple)
+                if (isOwner) {
+                    IconButton(onClick = onAddBook) {
+                        Icon(Icons.Default.Add, null, tint = PaginexNeonPurple)
+                    }
                 }
             }
 
@@ -1449,14 +1723,14 @@ fun CreateBookListDialog(onDismiss: () -> Unit, onCreate: (String, String) -> Un
         containerColor = PaginexGalaxy,
         shape = RoundedCornerShape(24.dp),
         title = {
-            Text("Yeni Liste Oluştur", color = PaginexWhite, fontWeight = FontWeight.Bold)
+            Text("Create New List", color = PaginexWhite, fontWeight = FontWeight.Bold)
         },
         text = {
             Column {
                 OutlinedTextField(
                     value = name,
                     onValueChange = { name = it },
-                    label = { Text("Liste adı", color = Color.Gray) },
+                    label = { Text("List name", color = Color.Gray) },
                     modifier = Modifier.fillMaxWidth(),
                     colors = OutlinedTextFieldDefaults.colors(
                         focusedBorderColor = PaginexNeonPurple,
@@ -1469,7 +1743,7 @@ fun CreateBookListDialog(onDismiss: () -> Unit, onCreate: (String, String) -> Un
                 OutlinedTextField(
                     value = description,
                     onValueChange = { description = it },
-                    label = { Text("Açıklama (isteğe bağlı)", color = Color.Gray) },
+                    label = { Text("Description (optional)", color = Color.Gray) },
                     modifier = Modifier.fillMaxWidth(),
                     colors = OutlinedTextFieldDefaults.colors(
                         focusedBorderColor = PaginexNeonPurple,
@@ -1485,11 +1759,11 @@ fun CreateBookListDialog(onDismiss: () -> Unit, onCreate: (String, String) -> Un
                 onClick = { if (name.isNotBlank()) onCreate(name, description) },
                 colors = ButtonDefaults.buttonColors(containerColor = PaginexNeonPurple)
             ) {
-                Text("Oluştur", color = Color.Black, fontWeight = FontWeight.Bold)
+                Text("Create", color = Color.Black, fontWeight = FontWeight.Bold)
             }
         },
         dismissButton = {
-            TextButton(onClick = onDismiss) { Text("Vazgeç", color = Color.Gray) }
+            TextButton(onClick = onDismiss) { Text("Cancel", color = Color.Gray) }
         }
     )
 }
@@ -1502,7 +1776,7 @@ fun AddBookToListDialog(bookList: BookList, onDismiss: () -> Unit, onBookAdded: 
         shape = RoundedCornerShape(24.dp),
         title = {
             Column {
-                Text("Kitap Ekle", color = PaginexWhite, fontWeight = FontWeight.Bold)
+                Text("Add Book", color = PaginexWhite, fontWeight = FontWeight.Bold)
                 Text("→ ${bookList.name}", color = PaginexNeonPurple, fontSize = 13.sp)
             }
         },
@@ -1536,31 +1810,33 @@ fun AddBookToListDialog(bookList: BookList, onDismiss: () -> Unit, onBookAdded: 
         },
         confirmButton = {},
         dismissButton = {
-            TextButton(onClick = onDismiss) { Text("Kapat", color = Color.Gray) }
+            TextButton(onClick = onDismiss) { Text("Close", color = Color.Gray) }
         }
     )
 }
 
 @Composable
 fun AddBookToLibraryDialog(onDismiss: () -> Unit, onBookAdded: (Book, String) -> Unit) {
-    var selectedStatus by remember { mutableStateOf("Okunacak") }
-    val statuses = listOf("Okunuyor", "Okundu", "Okunacak", "Bırakıldı")
+    var selectedStatus by remember { mutableStateOf("To Read") }
+    val statuses = listOf("Reading", "Read", "To Read", "On Hold", "Dropped")
+    var searchQuery by remember { mutableStateOf("") }
 
     AlertDialog(
         onDismissRequest = onDismiss,
         containerColor = PaginexGalaxy,
         shape = RoundedCornerShape(24.dp),
-        title = { Text("Kütüphaneye Kitap Ekle", color = PaginexWhite, fontWeight = FontWeight.Bold) },
+        title = { Text("Add Book to Library", color = PaginexWhite, fontWeight = FontWeight.Bold) },
         text = {
             Column {
-                Text("Durum seç:", color = Color.Gray, fontSize = 12.sp)
+                Text("Select status:", color = Color.Gray, fontSize = 12.sp)
                 Spacer(modifier = Modifier.height(8.dp))
                 LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     items(statuses) { s ->
                         val color = when(s) {
-                            "Okundu" -> PaginexNeonTeal
-                            "Okunuyor" -> PaginexNeonPurple
-                            "Bırakıldı" -> PaginexNeonPink
+                            "Read" -> PaginexNeonTeal
+                            "Reading" -> PaginexNeonPurple
+                            "Dropped" -> PaginexNeonPink
+                            "On Hold" -> Color(0xFFD97706)
                             else -> PaginexWhite.copy(alpha = 0.6f)
                         }
                         Surface(
@@ -1575,10 +1851,28 @@ fun AddBookToLibraryDialog(onDismiss: () -> Unit, onBookAdded: (Book, String) ->
                     }
                 }
                 Spacer(modifier = Modifier.height(16.dp))
-                Text("Kitap seç:", color = Color.Gray, fontSize = 12.sp)
+
+                OutlinedTextField(
+                    value = searchQuery,
+                    onValueChange = { searchQuery = it },
+                    modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp),
+                    placeholder = { Text("Search...", color = Color.Gray) },
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedBorderColor = PaginexNeonPurple,
+                        unfocusedBorderColor = PaginexGlassBorder,
+                        focusedTextColor = PaginexWhite,
+                        unfocusedTextColor = PaginexWhite
+                    ),
+                    shape = RoundedCornerShape(12.dp)
+                )
+
+                Text("Select book:", color = Color.Gray, fontSize = 12.sp)
                 Spacer(modifier = Modifier.height(8.dp))
                 LazyColumn(modifier = Modifier.height(200.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    items(MockData.sampleBooks) { book ->
+                    val currentUid = MockData.currentUser.id.ifEmpty { "u1" }
+                    val existingBookIds = MockData.readingStatuses.filter { it.userId == currentUid }.map { it.book.id }.toSet()
+                    val filteredBooks = MockData.sampleBooks.filter { it.title.contains(searchQuery, ignoreCase = true) && !existingBookIds.contains(it.id) }
+                    items(filteredBooks) { book ->
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
@@ -1606,16 +1900,23 @@ fun AddBookToLibraryDialog(onDismiss: () -> Unit, onBookAdded: (Book, String) ->
         },
         confirmButton = {},
         dismissButton = {
-            TextButton(onClick = onDismiss) { Text("Kapat", color = Color.Gray) }
+            TextButton(onClick = onDismiss) { Text("Close", color = Color.Gray) }
         }
     )
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun ConstellationScreen(onBack: () -> Unit, onBookClick: (String) -> Unit) {
-    val user = MockData.currentUser
-    val posts = MockData.feedPosts
+fun ConstellationScreen(targetUserId: String, onBack: () -> Unit, onBookClick: (String) -> Unit) {
+    var targetUser by remember { mutableStateOf(MockData.currentUser) }
+    LaunchedEffect(targetUserId) {
+        if (targetUserId != MockData.currentUser.id && targetUserId != "u1") {
+            FirestoreService.getUserProfile(targetUserId)?.let { targetUser = it }
+        }
+    }
+    val readingList = remember(MockData.readingStatuses.size, targetUserId) {
+        MockData.readingStatuses.filter { it.userId == targetUserId }
+    }
     val infiniteTransition = rememberInfiniteTransition()
     val twinkle by infiniteTransition.animateFloat(
         initialValue = 0.4f, targetValue = 1f,
@@ -1631,7 +1932,7 @@ fun ConstellationScreen(onBack: () -> Unit, onBookClick: (String) -> Unit) {
     )
     val twinkles = listOf(twinkle, twinkle2, twinkle3)
 
-    val genreMap = posts.groupBy { it.book.genre }
+    val genreMap = readingList.groupBy { it.book.genre }
     val genres = genreMap.keys.toList()
 
     val animScale = remember { Animatable(1f) }
@@ -1645,8 +1946,8 @@ fun ConstellationScreen(onBack: () -> Unit, onBookClick: (String) -> Unit) {
             TopAppBar(
                 title = {
                     Column {
-                        Text("Takım Yıldızı", color = PaginexWhite, fontWeight = FontWeight.Bold, fontSize = 18.sp)
-                        Text("Kitap Evrenimi", color = Color(0xFFFFD700), fontSize = 11.sp)
+                        Text("Constellation", color = PaginexWhite, fontWeight = FontWeight.Bold, fontSize = 18.sp)
+                        Text("My Book Universe", color = Color(0xFFFFD700), fontSize = 11.sp)
                     }
                 },
                 navigationIcon = {
@@ -1726,23 +2027,12 @@ fun ConstellationScreen(onBack: () -> Unit, onBookClick: (String) -> Unit) {
                         val isExpanded = expandedGenres.contains(genre)
                         val books = genreMap[genre] ?: emptyList()
                         
-                        // Only render books if expanded
-                        val renderBooks = if (isExpanded) {
-                            val multiplier = if (scale > 1.5f) ((scale - 1f) * 4).toInt().coerceAtMost(6) else 1
-                            if (multiplier > 1) {
-                                val expanded = mutableListOf<Post>()
-                                books.forEach { b -> 
-                                    expanded.add(b)
-                                    repeat(multiplier - 1) { expanded.add(b) } 
-                                }
-                                expanded
-                            } else books
-                        } else emptyList()
+                        // Only render books if expanded — exactly 1 star per book
+                        val renderBooks = if (isExpanded) books else emptyList()
 
                         val genreAngleBase = Math.toRadians((gi * 360.0 / genreCount) - 90.0)
-                        renderBooks.forEachIndexed { bi, _ ->
-                            val multiplier = if (scale > 1.5f) ((scale - 1f) * 4).toInt().coerceAtMost(6) else 1
-                            val spread = if (renderBooks.size == 1) 0.0 else (bi - (renderBooks.size - 1) / 2.0) * (0.7 / multiplier)
+                        renderBooks.forEachIndexed { bi, bookStatus ->
+                            val spread = if (renderBooks.size == 1) 0.0 else (bi - (renderBooks.size - 1) / 2.0) * 0.7
                             val bookAngle = genreAngleBase + spread
                             val bookDist = bookRadiusConfig + (if (bi % 2 == 0) 10f else -10f)
                             val bx = gx + (bookDist * cos(bookAngle)).toFloat()
@@ -1795,7 +2085,7 @@ fun ConstellationScreen(onBack: () -> Unit, onBookClick: (String) -> Unit) {
                 }
 
                 Box(modifier = Modifier.offset(x = with(density) { (cx - 40f).toDp() }, y = with(density) { (cy + 22f).toDp() })) {
-                    Text(user.fullName.split(" ")[0], color = Color(0xFFFFD700), fontSize = (11 / scale.coerceAtLeast(1f)).sp, fontWeight = FontWeight.ExtraBold, textAlign = TextAlign.Center)
+                    Text(targetUser.fullName.split(" ")[0], color = Color(0xFFFFD700), fontSize = (11 / scale.coerceAtLeast(1f)).sp, fontWeight = FontWeight.ExtraBold, textAlign = TextAlign.Center)
                 }
 
                 genres.forEachIndexed { gi, genre ->
@@ -1840,7 +2130,7 @@ fun ConstellationScreen(onBack: () -> Unit, onBookClick: (String) -> Unit) {
                     if (isExpanded) {
                         val books = genreMap[genre] ?: emptyList()
                         val genreAngleBase = Math.toRadians((gi * 360.0 / genreCount) - 90.0)
-                        books.forEachIndexed { bi, post ->
+                        books.forEachIndexed { bi, bookStatus ->
                             val spread = if (books.size == 1) 0.0 else (bi - (books.size - 1) / 2.0) * 0.7
                             val bookAngle = genreAngleBase + spread
                             val bookDist = bookRadiusConfig + (if (bi % 2 == 0) 10f else -10f)
@@ -1849,10 +2139,10 @@ fun ConstellationScreen(onBack: () -> Unit, onBookClick: (String) -> Unit) {
                             Box(
                                 modifier = Modifier
                                     .offset(x = with(density) { (bx - 36f).toDp() }, y = with(density) { (by + 11f).toDp() })
-                                    .clickable { onBookClick(post.id) }
+                                    .clickable { onBookClick(bookStatus.id) }
                             ) {
                                 Text(
-                                    post.book.title,
+                                    bookStatus.book.title,
                                     color = PaginexNeonTeal.copy(alpha = 0.85f),
                                     fontSize = (8 / scale.coerceAtLeast(1f)).sp,
                                     maxLines = 1,
@@ -1875,18 +2165,18 @@ fun ConstellationScreen(onBack: () -> Unit, onBookClick: (String) -> Unit) {
                     .border(1.dp, PaginexGlassBorder, RoundedCornerShape(12.dp))
                     .padding(12.dp)
             ) {
-                Text("Harita", color = PaginexWhite, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                Text("Map", color = PaginexWhite, fontSize = 11.sp, fontWeight = FontWeight.Bold)
                 Spacer(modifier = Modifier.height(6.dp))
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Box(modifier = Modifier.size(10.dp).background(Color(0xFFFFD700), CircleShape))
                     Spacer(modifier = Modifier.width(6.dp))
-                    Text("Profil / Tür", color = Color.Gray, fontSize = 10.sp)
+                    Text("Profile / Genre", color = Color.Gray, fontSize = 10.sp)
                 }
                 Spacer(modifier = Modifier.height(4.dp))
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Box(modifier = Modifier.size(8.dp).background(PaginexNeonTeal, CircleShape))
                     Spacer(modifier = Modifier.width(6.dp))
-                    Text("Kitap", color = Color.Gray, fontSize = 10.sp)
+                    Text("Book", color = Color.Gray, fontSize = 10.sp)
                 }
             }
 
@@ -1900,7 +2190,7 @@ fun ConstellationScreen(onBack: () -> Unit, onBookClick: (String) -> Unit) {
                     onClick = { scope.launch { animScale.animateTo((animScale.value + 0.5f).coerceAtMost(4f)) } },
                     modifier = Modifier.background(PaginexGlass, CircleShape).border(1.dp, PaginexGlassBorder, CircleShape)
                 ) {
-                    Icon(Icons.Default.Add, "Büyüt", tint = PaginexNeonTeal)
+                    Icon(Icons.Default.Add, "Zoom In", tint = PaginexNeonTeal)
                 }
                 Spacer(modifier = Modifier.height(8.dp))
                 IconButton(
@@ -1914,7 +2204,7 @@ fun ConstellationScreen(onBack: () -> Unit, onBookClick: (String) -> Unit) {
                     },
                     modifier = Modifier.background(PaginexGlass, CircleShape).border(1.dp, PaginexGlassBorder, CircleShape)
                 ) {
-                    Icon(Icons.Default.Remove, "Küçült", tint = PaginexNeonTeal)
+                    Icon(Icons.Default.Remove, "Zoom Out", tint = PaginexNeonTeal)
                 }
             }
         }
@@ -2059,11 +2349,11 @@ fun CelestialCategoryPortal(
             ) {
                 Icon(
                     imageVector = when(label) {
-                        "Okunuyor" -> Icons.Default.MenuBook
-                        "Okundu" -> Icons.Default.CheckCircle
-                        "Okunacak" -> Icons.Default.Star
-                        "Askıda" -> Icons.Default.Info
-                        "Bırakıldı" -> Icons.Default.Close
+                        "Reading" -> Icons.Default.MenuBook
+                        "Read" -> Icons.Default.CheckCircle
+                        "To Read" -> Icons.Default.Star
+                        "On Hold" -> Icons.Default.Info
+                        "Dropped" -> Icons.Default.Close
                         else -> Icons.Default.Book
                     },
                     contentDescription = null,
@@ -2092,6 +2382,7 @@ fun CelestialCategoryPortal(
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
 fun CreatePostScreen(initialPostId: String? = null, onPost: () -> Unit, onDraftsClick: () -> Unit) {
+    val focusManager = androidx.compose.ui.platform.LocalFocusManager.current
     val initialPost = remember(initialPostId) {
         MockData.feedPosts.find { it.id == initialPostId } ?: MockData.drafts.find { it.id == initialPostId }
     }
@@ -2103,46 +2394,24 @@ fun CreatePostScreen(initialPostId: String? = null, onPost: () -> Unit, onDrafts
     var showResults by remember { mutableStateOf(false) }
     var rating by remember { mutableStateOf(initialPost?.rating ?: 5f) }
     var showPublishDialog by remember { mutableStateOf(false) }
+    var showLibrarySelector by remember { mutableStateOf(false) }
     
     // Undo States
     var undoTimer by remember { mutableStateOf<Int?>(null) }
     var pendingPost by remember { mutableStateOf<Post?>(null) }
     var isDraftAction by remember { mutableStateOf(false) }
 
+    // Countdown for undo overlay, then navigate
     LaunchedEffect(undoTimer) {
         if (undoTimer != null && undoTimer!! > 0) {
             delay(1000L)
             undoTimer = undoTimer!! - 1
         } else if (undoTimer == 0) {
-            // Commit Action
-            if (isDraftAction) {
-                // Remove initial post if we are editing and saving as draft
-                if (initialPostId != null) {
-                    MockData.feedPosts.removeAll { it.id == initialPostId }
-                    MockData.drafts.removeAll { it.id == initialPostId }
-                }
-                MockData.drafts.add(pendingPost!!)
-            } else {
-                // Remove initial post if we are editing and publishing
-                if (initialPostId != null) {
-                    MockData.feedPosts.removeAll { it.id == initialPostId }
-                    MockData.drafts.removeAll { it.id == initialPostId }
-                }
-                MockData.feedPosts.add(0, pendingPost!!)
-            }
             onPost()
             undoTimer = null
             pendingPost = null
         }
     }
-
-    val categoryOptions = listOf(
-        Triple("Okunuyor", "Şu an okuduğun kitap", PaginexNeonPurple),
-        Triple("Okundu", "Okuduğun tüm kitaplar", PaginexNeonTeal),
-        Triple("Okunacak", "Okumayı planladığın kitaplar", PaginexNeonPurple),
-        Triple("Askıda", "Ara verdiğin kitaplar", Color(0xFFD97706)),
-        Triple("Bırakıldı", "Yarım kalan kitaplar", PaginexNeonPink)
-    )
 
     Box(modifier = Modifier.fillMaxSize().background(PaginexSpace)) {
         DynamicNebula()
@@ -2150,6 +2419,7 @@ fun CreatePostScreen(initialPostId: String? = null, onPost: () -> Unit, onDrafts
         Column(
             modifier = Modifier
                 .fillMaxSize()
+                .imePadding()
                 .padding(24.dp)
                 .verticalScroll(rememberScrollState())
         ) {
@@ -2173,47 +2443,24 @@ fun CreatePostScreen(initialPostId: String? = null, onPost: () -> Unit, onDrafts
                 ) {
                     Icon(Icons.Default.Create, null, tint = PaginexNeonTeal, modifier = Modifier.size(12.dp))
                     Spacer(modifier = Modifier.width(4.dp))
-                    Text("Taslaklar", color = PaginexNeonTeal, fontWeight = FontWeight.Bold, fontSize = 10.sp)
+                    Text("Drafts", color = PaginexNeonTeal, fontWeight = FontWeight.Bold, fontSize = 10.sp)
                 }
             }
             Spacer(modifier = Modifier.height(8.dp))
             Text(
-                "YENİ İNCELEME",
+                "NEW REVIEW",
                 fontSize = 32.sp,
                 fontWeight = FontWeight.Black,
                 color = PaginexWhite,
                 letterSpacing = (-1).sp
             )
 
-            Spacer(modifier = Modifier.height(40.dp))
-
-            // 1. Step: Category Portals (Always at top)
-            Text(
-                "YOLCULUK TÜRÜNÜ SEÇ",
-                fontSize = 10.sp,
-                color = PaginexWhite.copy(alpha = 0.5f),
-                fontWeight = FontWeight.Black,
-                letterSpacing = 2.sp
-            )
-            Spacer(modifier = Modifier.height(16.dp))
-            
-            categoryOptions.forEach { (label, desc, color) ->
-                CelestialCategoryPortal(
-                    label = label,
-                    description = desc,
-                    isSelected = status == label,
-                    color = color,
-                    onClick = { status = label }
-                )
-                Spacer(modifier = Modifier.height(12.dp))
-            }
-
-            if (status != null) {
+            if (true) {
                 Spacer(modifier = Modifier.height(32.dp))
                 
                 // 2. Step: Search & Book Orbit
                 Text(
-                    "ESERİ BELİRLE",
+                    "SELECT THE WORK",
                     fontSize = 10.sp,
                     color = PaginexWhite.copy(alpha = 0.5f),
                     fontWeight = FontWeight.Black,
@@ -2221,88 +2468,67 @@ fun CreatePostScreen(initialPostId: String? = null, onPost: () -> Unit, onDrafts
                 )
                 Spacer(modifier = Modifier.height(16.dp))
 
-                Box(modifier = Modifier.fillMaxWidth()) {
-                    Card(
-                        modifier = Modifier
-                            .fillMaxWidth(0.9f)
-                            .graphicsLayer(rotationZ = -1f),
-                        colors = CardDefaults.cardColors(containerColor = PaginexGlass),
-                        shape = RoundedCornerShape(topStart = 40.dp, bottomEnd = 40.dp, topEnd = 8.dp, bottomStart = 8.dp),
-                        border = BorderStroke(2.dp, PaginexNeonPurple.copy(alpha = 0.4f))
+                Box(modifier = Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
+                    OutlinedButton(
+                        onClick = { showLibrarySelector = true },
+                        modifier = Modifier.padding(top = 8.dp).fillMaxWidth(0.8f).height(48.dp),
+                        shape = RoundedCornerShape(24.dp),
+                        border = BorderStroke(1.dp, PaginexNeonPurple.copy(alpha = 0.6f))
                     ) {
-                        TextField(
-                            value = if (selectedBook != null && !showResults) "" else searchQuery,
-                            onValueChange = { searchQuery = it; showResults = true },
-                            placeholder = { Text("Galakside bir eser ara...", color = Color.Gray, fontStyle = FontStyle.Italic) },
-                            modifier = Modifier.fillMaxWidth().padding(4.dp),
-                            colors = TextFieldDefaults.colors(
-                                unfocusedContainerColor = Color.Transparent,
-                                focusedContainerColor = Color.Transparent,
-                                unfocusedIndicatorColor = Color.Transparent,
-                                focusedIndicatorColor = Color.Transparent,
-                                focusedTextColor = PaginexWhite
-                            )
-                        )
-                    }
-
-                    if (showResults && searchQuery.isNotEmpty()) {
-                        val filteredResults = MockData.sampleBooks.filter { it.title.contains(searchQuery, true) }
-                        LazyRow(
-                            modifier = Modifier.padding(top = 70.dp),
-                            contentPadding = PaddingValues(horizontal = 8.dp),
-                            horizontalArrangement = Arrangement.spacedBy(16.dp)
-                        ) {
-                            items(filteredResults) { book ->
-                                Card(
-                                    modifier = Modifier
-                                        .size(120.dp, 160.dp)
-                                        .clickable { selectedBook = book; searchQuery = book.title; showResults = false },
-                                    shape = RoundedCornerShape(20.dp),
-                                    colors = CardDefaults.cardColors(containerColor = PaginexGlass.copy(alpha = 0.9f)),
-                                    border = BorderStroke(1.dp, PaginexNeonTeal.copy(alpha = 0.6f))
-                                ) {
-                                    Column(modifier = Modifier.padding(10.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                                        AsyncImage(
-                                            model = book.coverUrl,
-                                            contentDescription = null,
-                                            modifier = Modifier.size(70.dp, 100.dp).clip(RoundedCornerShape(8.dp)),
-                                            contentScale = ContentScale.Crop
-                                        )
-                                        Spacer(modifier = Modifier.height(6.dp))
-                                        Text(book.title, color = PaginexWhite, fontSize = 10.sp, fontWeight = FontWeight.Bold, maxLines = 1)
-                                    }
-                                }
-                            }
-                        }
+                        Icon(Icons.Default.Add, null, tint = PaginexNeonPurple, modifier = Modifier.size(16.dp))
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text("Select Book from Library", color = PaginexNeonPurple, fontWeight = FontWeight.Bold, fontSize = 14.sp)
                     }
                 }
 
                 if (selectedBook != null) {
-                    Spacer(modifier = Modifier.height(40.dp))
+                    Spacer(modifier = Modifier.height(32.dp))
                     
-                    // Holographic Projection Centerpiece
-                    Box(modifier = Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
-                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    // Selected Book "Box"
+                    Card(
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(16.dp),
+                        colors = CardDefaults.cardColors(containerColor = PaginexGlass),
+                        border = BorderStroke(1.dp, PaginexNeonTeal.copy(alpha = 0.4f))
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(16.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
                             AsyncImage(
                                 model = selectedBook!!.coverUrl,
                                 contentDescription = null,
                                 modifier = Modifier
-                                    .size(120.dp, 180.dp)
-                                    .clip(RoundedCornerShape(12.dp))
-                                    .graphicsLayer(
-                                        shadowElevation = 30f,
-                                        spotShadowColor = categoryOptions.find { it.first == status }?.third ?: PaginexNeonPurple
-                                    ),
+                                    .size(60.dp, 90.dp)
+                                    .clip(RoundedCornerShape(8.dp)),
                                 contentScale = ContentScale.Crop
                             )
-                            Spacer(modifier = Modifier.height(16.dp))
-                            Text(
-                                selectedBook!!.title.uppercase(), 
-                                color = categoryOptions.find { it.first == status }?.third ?: PaginexNeonTeal, 
-                                fontSize = 14.sp, 
-                                fontWeight = FontWeight.Black,
-                                letterSpacing = 2.sp
-                            )
+                            Spacer(modifier = Modifier.width(20.dp))
+                            Column {
+                                Text(
+                                    text = selectedBook!!.title,
+                                    color = PaginexWhite,
+                                    fontSize = 18.sp,
+                                    fontWeight = FontWeight.Bold
+                                )
+                                Text(
+                                    text = selectedBook!!.author,
+                                    color = Color.Gray,
+                                    fontSize = 14.sp
+                                )
+                                Spacer(modifier = Modifier.height(8.dp))
+                                Text(
+                                    text = "SELECTED",
+                                    color = PaginexNeonTeal,
+                                    fontSize = 10.sp,
+                                    fontWeight = FontWeight.Black,
+                                    letterSpacing = 2.sp
+                                )
+                            }
+                            Spacer(modifier = Modifier.weight(1f))
+                            IconButton(onClick = { selectedBook = null }) {
+                                Icon(Icons.Default.Close, null, tint = PaginexNeonPink)
+                            }
                         }
                     }
 
@@ -2318,7 +2544,7 @@ fun CreatePostScreen(initialPostId: String? = null, onPost: () -> Unit, onDrafts
                         border = BorderStroke(1.dp, PaginexGlassBorder)
                     ) {
                         Column(modifier = Modifier.padding(24.dp)) {
-                            Text("ZİHİNSEL YOLCULUK", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = PaginexNeonTeal, letterSpacing = 2.sp)
+                            Text("MENTAL JOURNEY", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = PaginexNeonTeal, letterSpacing = 2.sp)
                             Spacer(modifier = Modifier.height(16.dp))
                             BasicTextField(
                                 value = reviewText,
@@ -2326,7 +2552,7 @@ fun CreatePostScreen(initialPostId: String? = null, onPost: () -> Unit, onDrafts
                                 modifier = Modifier.fillMaxWidth().height(160.dp),
                                 textStyle = androidx.compose.ui.text.TextStyle(color = PaginexWhite, fontSize = 16.sp),
                                 decorationBox = { innerTextField ->
-                                    if (reviewText.isEmpty()) Text("Düşüncelerin yıldızlar gibi aksın...", color = Color.Gray)
+                                    if (reviewText.isEmpty()) Text("Let your thoughts flow like stars...", color = Color.Gray)
                                     innerTextField()
                                 }
                             )
@@ -2336,28 +2562,36 @@ fun CreatePostScreen(initialPostId: String? = null, onPost: () -> Unit, onDrafts
                     Spacer(modifier = Modifier.height(32.dp))
                     
                     // Rating Slider
-                    Column(
-                        modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp),
-                        horizontalAlignment = Alignment.CenterHorizontally
-                    ) {
-                        Text("ESERE PUANIN: ${rating.toInt()}/10", color = PaginexNeonTeal, fontWeight = FontWeight.Bold)
-                        Slider(
-                            value = rating,
-                            onValueChange = { rating = it },
-                            valueRange = 1f..10f,
-                            steps = 8,
-                            colors = SliderDefaults.colors(
-                                thumbColor = PaginexNeonPurple,
-                                activeTrackColor = PaginexNeonPurple,
-                                inactiveTrackColor = PaginexGlassBorder
+                    if (status != "To Read") {
+                        Column(
+                            modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally
+                        ) {
+                            Text("YOUR RATING: ${rating.toInt()}/10", color = PaginexNeonTeal, fontWeight = FontWeight.Bold)
+                            Slider(
+                                value = rating,
+                                onValueChange = { rating = Math.round(it).toFloat() },
+                                valueRange = 1f..10f,
+                                steps = 8,
+                                colors = SliderDefaults.colors(
+                                    thumbColor = PaginexNeonPurple,
+                                    activeTrackColor = PaginexNeonPurple,
+                                    inactiveTrackColor = PaginexGlassBorder
+                                )
                             )
-                        )
+                        }
                     }
 
                     Spacer(modifier = Modifier.height(16.dp))
 
                     // Final Action Button
                     val isReady = reviewText.isNotEmpty() && selectedBook != null && status != null
+                    val btnColor = when (status) {
+                        "Read" -> PaginexNeonTeal
+                        "Reading" -> PaginexNeonPurple
+                        "Dropped" -> PaginexNeonPink
+                        else -> PaginexNeonTeal
+                    }
                     Surface(
                         onClick = { if (isReady) showPublishDialog = true },
                         enabled = isReady,
@@ -2366,12 +2600,12 @@ fun CreatePostScreen(initialPostId: String? = null, onPost: () -> Unit, onDrafts
                             .padding(bottom = 32.dp)
                             .size(200.dp, 56.dp),
                         shape = RoundedCornerShape(28.dp),
-                        color = if (isReady) (categoryOptions.find { it.first == status }?.third ?: PaginexNeonPurple) else PaginexGlass,
+                        color = if (isReady) btnColor else PaginexGlass,
                         border = BorderStroke(2.dp, if (isReady) Color.White else PaginexGlassBorder)
                     ) {
                         Box(contentAlignment = Alignment.Center) {
                             Text(
-                                "YAYINLA", 
+                                "PUBLISH", 
                                 color = if (isReady) Color.Black else Color.Gray,
                                 fontWeight = FontWeight.Black,
                                 fontSize = 14.sp
@@ -2384,39 +2618,67 @@ fun CreatePostScreen(initialPostId: String? = null, onPost: () -> Unit, onDrafts
             Spacer(modifier = Modifier.height(100.dp))
         }
 
+        if (showLibrarySelector) {
+            LibrarySelectorSheet(
+                targetUserId = MockData.currentUser.id.ifEmpty { "u1" },
+                onDismiss = { showLibrarySelector = false },
+                onBookSelected = { rs -> 
+                    selectedBook = rs.book
+                    status = rs.status
+                    showLibrarySelector = false
+                }
+            )
+        }
+
         if (showPublishDialog) {
             AlertDialog(
                 onDismissRequest = { showPublishDialog = false },
                 containerColor = PaginexGalaxy,
-                title = { Text("Yolculuğun Kaydedilsin mi?", color = PaginexWhite) },
-                text = { Text("Draftlamak mı istiyorsun, yayınlamak mı istiyorsun?", color = Color.Gray) },
+                title = { Text("Save your journey?", color = PaginexWhite) },
+                text = { Text("Do you want to draft or publish?", color = Color.Gray) },
                 confirmButton = {
                     Button(
                         onClick = { 
                             showPublishDialog = false
-                            pendingPost = Post(
+                            val uid = MockData.currentUser.id.ifEmpty { "u1" }
+                            val newPost = Post(
                                 id = "post_${System.currentTimeMillis()}",
-                                userId = MockData.currentUser.id,
+                                userId = uid,
                                 book = selectedBook!!,
-                                status = status ?: "Okunacak",
+                                status = status ?: "To Read",
                                 rating = rating,
                                 review = reviewText
                             )
+                            pendingPost = newPost
                             isDraftAction = false
+                            // Add to local cache immediately
+                            MockData.feedPosts.add(0, newPost)
+                            // Handle old post cleanup + Firestore write in GlobalScope (survives navigation)
+                            kotlinx.coroutines.MainScope().launch {
+                                if (initialPostId != null) {
+                                    val ei = MockData.feedPosts.indexOfFirst { it.id == initialPostId }
+                                    if (ei != -1) MockData.feedPosts.removeAt(ei)
+                                    val edi = MockData.drafts.indexOfFirst { it.id == initialPostId }
+                                    if (edi != -1) MockData.drafts.removeAt(edi)
+                                    FirestoreService.deletePost(initialPostId)
+                                }
+                                FirestoreService.createPost(newPost)
+                            }
                             undoTimer = 5 
                         },
                         colors = ButtonDefaults.buttonColors(containerColor = PaginexNeonPurple)
-                    ) { Text("Yayınla", color = Color.Black) }
+                    ) { Text("Publish", color = Color.Black) }
                 },
                 dismissButton = {
                     OutlinedButton(
                         onClick = { 
                             showPublishDialog = false
+                            val uid = MockData.currentUser.id.ifEmpty { "u1" }
                             pendingPost = Post(
                                 id = "draft_${System.currentTimeMillis()}",
-                                userId = MockData.currentUser.id,
+                                userId = uid,
                                 book = selectedBook!!,
-                                status = status ?: "Okunacak",
+                                status = status ?: "To Read",
                                 rating = rating,
                                 review = reviewText
                             )
@@ -2424,7 +2686,7 @@ fun CreatePostScreen(initialPostId: String? = null, onPost: () -> Unit, onDrafts
                             undoTimer = 5
                         },
                         border = BorderStroke(1.dp, PaginexNeonPurple)
-                    ) { Text("Draft Olarak Kaydet", color = PaginexNeonPurple) }
+                    ) { Text("Save as Draft", color = PaginexNeonPurple) }
                 }
             )
         }
@@ -2456,16 +2718,26 @@ fun CreatePostScreen(initialPostId: String? = null, onPost: () -> Unit, onDrafts
                             Text("${undoTimer}", color = PaginexNeonTeal, fontWeight = FontWeight.Black, fontSize = 14.sp)
                         }
                         Spacer(modifier = Modifier.width(12.dp))
-                        Text(if (isDraftAction) "Taslağa Kaydediliyor..." else "Yayınlanıyor...", color = PaginexWhite, fontSize = 13.sp)
+                        Text(if (isDraftAction) "Saving to drafts..." else "Publishing...", color = PaginexWhite, fontSize = 13.sp)
                     }
                     
                     TextButton(
                         onClick = { 
+                            // Rollback: delete the post we just saved to Firestore
+                            val postToUndo = pendingPost
+                            if (postToUndo != null && !isDraftAction) {
+                                val idx = MockData.feedPosts.indexOfFirst { it.id == postToUndo.id }
+                                if (idx != -1) MockData.feedPosts.removeAt(idx)
+                                kotlinx.coroutines.MainScope().launch { FirestoreService.deletePost(postToUndo.id) }
+                            } else if (postToUndo != null && isDraftAction) {
+                                val idx = MockData.drafts.indexOfFirst { it.id == postToUndo.id }
+                                if (idx != -1) MockData.drafts.removeAt(idx)
+                            }
                             undoTimer = null
                             pendingPost = null
                         }
                     ) {
-                        Text("GERİ AL", color = PaginexNeonPink, fontWeight = FontWeight.Black, letterSpacing = 1.sp)
+                        Text("UNDO", color = PaginexNeonPink, fontWeight = FontWeight.Black, letterSpacing = 1.sp)
                     }
                 }
             }
@@ -2589,7 +2861,7 @@ fun ProfileMindMap(onClick: () -> Unit = {}) {
         }
         
         Text(
-            text = "Zihinsel Yolculuk",
+            text = "Mental Journey",
             color = Color.White,
             fontSize = 12.sp,
             fontWeight = FontWeight.Bold,
@@ -2605,7 +2877,7 @@ fun DraftsScreen(onBack: () -> Unit) {
         containerColor = PaginexSpace,
         topBar = {
             TopAppBar(
-                title = { Text("Taslaklar", color = PaginexWhite) },
+                title = { Text("Drafts", color = PaginexWhite) },
                 navigationIcon = { IconButton(onClick = onBack) { Icon(Icons.Default.ArrowBack, null, tint = PaginexWhite) } },
                 colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.Transparent)
             )
@@ -2614,7 +2886,7 @@ fun DraftsScreen(onBack: () -> Unit) {
         val drafts = MockData.drafts
         if (drafts.isEmpty()) {
             Box(modifier = Modifier.fillMaxSize().padding(padding), contentAlignment = Alignment.Center) {
-                Text("Henüz kaydedilmiş bir taslağın yok.", color = Color.Gray, fontSize = 16.sp)
+                Text("You don't have any saved drafts yet.", color = Color.Gray, fontSize = 16.sp)
             }
         } else {
             LazyColumn(modifier = Modifier.fillMaxSize().padding(padding), contentPadding = PaddingValues(16.dp)) {
@@ -2646,10 +2918,10 @@ fun DraftsScreen(onBack: () -> Unit) {
                                 }
                             }
                             Spacer(modifier = Modifier.height(12.dp))
-                            Text("Durum: ${draft.status}", color = PaginexNeonTeal, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                            Text("Status: ${draft.status}", color = PaginexNeonTeal, fontSize = 12.sp, fontWeight = FontWeight.Bold)
                             Spacer(modifier = Modifier.height(8.dp))
                             Text(
-                                "İnceleme: ${draft.review}",
+                                "Review: ${draft.review}",
                                 color = PaginexWhite.copy(alpha = 0.8f),
                                 fontSize = 14.sp,
                                 maxLines = 3,
@@ -2662,7 +2934,7 @@ fun DraftsScreen(onBack: () -> Unit) {
                                     colors = ButtonDefaults.outlinedButtonColors(contentColor = Color.Red),
                                     border = BorderStroke(1.dp, Color.Red.copy(alpha = 0.5f))
                                 ) {
-                                    Text("Sil", color = Color.Red)
+                                    Text("Delete", color = Color.Red)
                                 }
                                 Spacer(modifier = Modifier.width(12.dp))
                                 Button(
@@ -2680,6 +2952,334 @@ fun DraftsScreen(onBack: () -> Unit) {
                     }
                 }
             }
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun SettingsScreen(
+    onNavigateToEditProfile: () -> Unit,
+    onLogout: () -> Unit,
+    onBack: () -> Unit
+) {
+    val user = MockData.currentUser
+    val isDarkTheme = LocalIsDarkTheme.current
+    val themeToggle = LocalThemeToggle.current
+
+    Scaffold(
+        containerColor = PaginexSpace,
+        topBar = {
+            TopAppBar(
+                title = { Text("Profile settings", color = PaginexWhite, fontWeight = FontWeight.Bold, fontSize = 20.sp) },
+                navigationIcon = {
+                    IconButton(onClick = onBack) { Icon(Icons.Default.ArrowBack, null, tint = PaginexWhite) }
+                },
+                colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.Transparent)
+            )
+        }
+    ) { padding ->
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(padding)
+                .verticalScroll(rememberScrollState())
+        ) {
+            // Header
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(24.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                AsyncImage(
+                    model = user.avatarUrl.ifEmpty { "https://via.placeholder.com/200" },
+                    contentDescription = null,
+                    modifier = Modifier
+                        .size(72.dp)
+                        .clip(CircleShape)
+                        .border(2.dp, PaginexNeonPurple, CircleShape),
+                    contentScale = ContentScale.Crop
+                )
+                Spacer(modifier = Modifier.width(16.dp))
+                Column {
+                    Text(user.fullName, color = PaginexWhite, fontWeight = FontWeight.Bold, fontSize = 22.sp)
+                    Text("@${user.username}", color = Color.Gray, fontSize = 14.sp)
+                }
+            }
+
+            Spacer(modifier = Modifier.height(16.dp))
+
+            // Account settings list
+            Text(
+                "Account settings",
+                color = Color.Gray,
+                fontSize = 12.sp,
+                fontWeight = FontWeight.Bold,
+                letterSpacing = 1.sp,
+                modifier = Modifier.padding(horizontal = 24.dp)
+            )
+            Spacer(modifier = Modifier.height(16.dp))
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable { onNavigateToEditProfile() }
+                    .padding(horizontal = 24.dp, vertical = 16.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Icon(Icons.Default.Person, null, tint = PaginexNeonTeal, modifier = Modifier.size(24.dp))
+                Spacer(modifier = Modifier.width(16.dp))
+                Text("Personal information", color = PaginexWhite, fontSize = 16.sp, modifier = Modifier.weight(1f))
+                Icon(Icons.Default.KeyboardArrowRight, null, tint = Color.Gray)
+            }
+            Divider(color = PaginexGlassBorder, thickness = 0.5.dp, modifier = Modifier.padding(horizontal = 24.dp))
+
+            Spacer(modifier = Modifier.height(32.dp))
+
+            // Customisation list
+            Text(
+                "Customisation",
+                color = Color.Gray,
+                fontSize = 12.sp,
+                fontWeight = FontWeight.Bold,
+                letterSpacing = 1.sp,
+                modifier = Modifier.padding(horizontal = 24.dp)
+            )
+            Spacer(modifier = Modifier.height(16.dp))
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 24.dp, vertical = 12.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Icon(Icons.Default.Star, null, tint = PaginexNeonPurple, modifier = Modifier.size(24.dp))
+                Spacer(modifier = Modifier.width(16.dp))
+                Text("Theme", color = PaginexWhite, fontSize = 16.sp, modifier = Modifier.weight(1f))
+                Switch(
+                    checked = isDarkTheme,
+                    onCheckedChange = { themeToggle() },
+                    colors = SwitchDefaults.colors(
+                        checkedThumbColor = PaginexWhite,
+                        checkedTrackColor = PaginexNeonPurple,
+                        uncheckedThumbColor = Color.LightGray,
+                        uncheckedTrackColor = PaginexGlass
+                    )
+                )
+            }
+            Divider(color = PaginexGlassBorder, thickness = 0.5.dp, modifier = Modifier.padding(horizontal = 24.dp))
+
+            Spacer(modifier = Modifier.height(32.dp))
+
+            TextButton(
+                onClick = onLogout,
+                modifier = Modifier.padding(horizontal = 16.dp)
+            ) {
+                Text("Log out", color = Color.Red, fontSize = 16.sp, fontWeight = FontWeight.Bold)
+            }
+        }
+    }
+}
+
+@Composable
+fun ProfileStatItem(label: String, value: String, icon: ImageVector? = null, onClick: (() -> Unit)? = null) {
+    Column(
+        horizontalAlignment = Alignment.CenterHorizontally,
+        modifier = if (onClick != null) Modifier.clickable { onClick() } else Modifier
+    ) {
+        if (icon != null) {
+            Icon(icon, contentDescription = null, tint = PaginexWhite, modifier = Modifier.size(20.dp))
+            Spacer(modifier = Modifier.height(4.dp))
+        }
+        Text(value, fontWeight = FontWeight.ExtraBold, color = PaginexWhite, fontSize = 20.sp)
+        Text(label, fontSize = 11.sp, color = Color.Gray)
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun PublicProfileScreen(
+    userId: String,
+    onBack: () -> Unit,
+    onBookClick: (String) -> Unit,
+    onListsClick: () -> Unit,
+    onConstellationClick: () -> Unit
+) {
+    var user by remember { mutableStateOf<User?>(null) }
+    var isFollowing by remember { mutableStateOf(false) }
+    val scope = rememberCoroutineScope()
+    var showFollowers by remember { mutableStateOf(false) }
+    var showFollowing by remember { mutableStateOf(false) }
+    var showLibrary by remember { mutableStateOf(false) }
+    
+    val userFeed = remember { mutableStateListOf<Post>() }
+    
+    val infiniteTransition = rememberInfiniteTransition()
+    val rotation by infiniteTransition.animateFloat(
+        initialValue = 0f,
+        targetValue = 360f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(20000, easing = LinearEasing),
+            repeatMode = RepeatMode.Restart
+        )
+    )
+
+    LaunchedEffect(userId) {
+        user = FirestoreService.getUserProfile(userId)
+        val posts = FirestoreService.getFeed()
+        userFeed.clear()
+        userFeed.addAll(posts.filter { it.userId == userId })
+        
+        // Check if current user is following this user
+        val followsReq = FirestoreService.getFollowing("u1")
+        isFollowing = followsReq.any { it.id == userId }
+    }
+
+    Scaffold(
+        containerColor = PaginexSpace,
+        topBar = {
+            TopAppBar(
+                title = { Text(user?.username ?: "", color = PaginexWhite, fontWeight = FontWeight.Bold) },
+                navigationIcon = {
+                    IconButton(onClick = onBack) { Icon(Icons.Default.ArrowBack, null, tint = PaginexWhite) }
+                },
+                colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.Transparent)
+            )
+        }
+    ) { padding ->
+        if (user == null) {
+            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator(color = PaginexNeonPurple) }
+            return@Scaffold
+        }
+        
+        val u = user!!
+
+        LazyColumn(
+            modifier = Modifier.fillMaxSize().padding(padding).background(PaginexSpace),
+            contentPadding = PaddingValues(bottom = 100.dp)
+        ) {
+            item {
+                Column(
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 24.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    UserGalaxy(user = u, rotation = rotation, onBookClick = onBookClick)
+                    Spacer(modifier = Modifier.height(16.dp))
+                    Text(u.fullName, color = PaginexWhite, fontSize = 24.sp, fontWeight = FontWeight.Bold)
+                    Text("@${u.username}", color = Color.Gray, fontSize = 14.sp)
+
+                    if (u.bio.isNotEmpty()) {
+                        Spacer(modifier = Modifier.height(16.dp))
+                        Text(
+                            u.bio,
+                            color = PaginexWhite.copy(alpha = 0.8f),
+                            fontSize = 14.sp,
+                            textAlign = TextAlign.Center,
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                    }
+
+                    Spacer(modifier = Modifier.height(24.dp))
+
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp),
+                        horizontalArrangement = Arrangement.SpaceEvenly
+                    ) {
+                        ProfileStatItem("Followers", u.followersCount.toString(), null, onClick = { showFollowers = true })
+                        ProfileStatItem("Following", u.followingCount.toString(), null, onClick = { showFollowing = true })
+                        ProfileStatItem("Books", MockData.readingStatuses.count { it.userId == u.id }.toString(), null, onClick = { showLibrary = true })
+                    }
+
+                    if (showFollowers) {
+                        UserListSheet("Followers", targetUserId = userId, onDismiss = { showFollowers = false })
+                    }
+                    if (showFollowing) {
+                        UserListSheet("Following", targetUserId = userId, onDismiss = { showFollowing = false })
+                    }
+
+                    Spacer(modifier = Modifier.height(24.dp))
+
+                    // Action Buttons Row
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        // Book Lists Button
+                        OutlinedButton(
+                            onClick = onListsClick,
+                            modifier = Modifier.weight(1f).height(44.dp),
+                            shape = RoundedCornerShape(22.dp),
+                            border = BorderStroke(1.dp, PaginexNeonPurple.copy(alpha = 0.6f)),
+                            contentPadding = PaddingValues(0.dp)
+                        ) {
+                            Icon(Icons.Default.List, null, tint = PaginexNeonPurple, modifier = Modifier.size(14.dp))
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text("Lists", color = PaginexNeonPurple, fontWeight = FontWeight.Bold, fontSize = 11.sp)
+                        }
+
+                        // Constellation Button
+                        OutlinedButton(
+                            onClick = onConstellationClick,
+                            modifier = Modifier.weight(1f).height(44.dp),
+                            shape = RoundedCornerShape(22.dp),
+                            border = BorderStroke(1.dp, PaginexNeonPurple.copy(alpha = 0.6f)),
+                            contentPadding = PaddingValues(0.dp)
+                        ) {
+                            Icon(Icons.Default.Star, null, tint = PaginexNeonPurple, modifier = Modifier.size(14.dp))
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text("Map", color = PaginexNeonPurple, fontWeight = FontWeight.Bold, fontSize = 11.sp)
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(24.dp))
+
+                    Button(
+                        onClick = {
+                            scope.launch {
+                                if (isFollowing) {
+                                    isFollowing = false
+                                    MockData.currentUser = MockData.currentUser.copy(followingCount = (MockData.currentUser.followingCount - 1).coerceAtLeast(0))
+                                    kotlinx.coroutines.MainScope().launch {
+                                        FirestoreService.unfollowUser("u1", userId)
+                                    }
+                                } else {
+                                    isFollowing = true
+                                    MockData.currentUser = MockData.currentUser.copy(followingCount = MockData.currentUser.followingCount + 1)
+                                    kotlinx.coroutines.MainScope().launch {
+                                        FirestoreService.followUser("u1", userId)
+                                    }
+                                }
+                            }
+                        },
+                        colors = ButtonDefaults.buttonColors(containerColor = if (isFollowing) PaginexGlass else PaginexNeonPurple),
+                        shape = RoundedCornerShape(24.dp),
+                        modifier = Modifier.fillMaxWidth(0.6f).height(48.dp)
+                    ) {
+                        Text(
+                            if (isFollowing) "Unfollow" else "Follow",
+                            color = if (isFollowing) PaginexWhite else Color.Black,
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 16.sp
+                        )
+                    }
+                }
+            }
+
+            items(userFeed, key = { it.id }) { post ->
+                BookPostCard(
+                    post = post,
+                    onUserClick = { /* Already here */ },
+                    onBookClick = { onBookClick(post.id) }
+                )
+                Spacer(modifier = Modifier.height(16.dp))
+            }
+        }
+
+        if (showFollowing) {
+            UserListSheet("Following", targetUserId = userId, onDismiss = { showFollowing = false })
+        }
+        if (showLibrary) {
+            UserLibrarySheet(targetUserId = userId, onDismiss = { showLibrary = false })
         }
     }
 }

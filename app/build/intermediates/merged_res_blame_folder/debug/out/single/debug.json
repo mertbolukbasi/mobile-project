@@ -1,18 +1,22 @@
 [
     {
-        "merged": "com.example.paginex.app-merged_res-62:/xml_data_extraction_rules.xml.flat",
-        "source": "com.example.paginex.app-main-64:/xml/data_extraction_rules.xml"
+        "merged": "/home/burak/.gradle/daemon/8.5/com.example.paginex.app-merged_res-66:/drawable_ic_paginex_icon.png.flat",
+        "source": "/home/burak/.gradle/daemon/8.5/com.example.paginex.app-main-68:/drawable/ic_paginex_icon.png"
     },
     {
-        "merged": "com.example.paginex.app-merged_res-62:/drawable_ic_splash_logo.png.flat",
-        "source": "com.example.paginex.app-main-64:/drawable/ic_splash_logo.png"
+        "merged": "/home/burak/.gradle/daemon/8.5/com.example.paginex.app-merged_res-66:/xml_backup_rules.xml.flat",
+        "source": "/home/burak/.gradle/daemon/8.5/com.example.paginex.app-main-68:/xml/backup_rules.xml"
     },
     {
-        "merged": "com.example.paginex.app-merged_res-62:/xml_backup_rules.xml.flat",
-        "source": "com.example.paginex.app-main-64:/xml/backup_rules.xml"
+        "merged": "/home/burak/.gradle/daemon/8.5/com.example.paginex.app-merged_res-66:/xml_data_extraction_rules.xml.flat",
+        "source": "/home/burak/.gradle/daemon/8.5/com.example.paginex.app-main-68:/xml/data_extraction_rules.xml"
     },
     {
-        "merged": "com.example.paginex.app-merged_res-62:/drawable_ic_paginex_icon.png.flat",
-        "source": "com.example.paginex.app-main-64:/drawable/ic_paginex_icon.png"
+        "merged": "com.example.paginex.app-merged_res-66:/drawable_ic_paginex_icon.png.flat",
+        "source": "com.example.paginex.app-main-68:/drawable/ic_paginex_icon.png"
+    },
+    {
+        "merged": "/home/burak/.gradle/daemon/8.5/com.example.paginex.app-merged_res-66:/drawable_ic_splash_logo.png.flat",
+        "source": "/home/burak/.gradle/daemon/8.5/com.example.paginex.app-main-68:/drawable/ic_splash_logo.png"
     }
 ]
