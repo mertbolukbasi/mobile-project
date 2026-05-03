@@ -864,6 +864,73 @@ object FirestoreService {
         }
     }
 
+    suspend fun updateUserProfile(userId: String, fields: Map<String, Any>): Boolean {
+        return try {
+            val updates = fields.toMutableMap()
+            updates["updatedAt"] = Timestamp.now()
+            db.collection("users").document(userId).update(updates).await()
+            true
+        } catch (e: Exception) {
+            Log.e(TAG, "Error updating user profile", e)
+            false
+        }
+    }
+
+    suspend fun deleteUserData(userId: String): Boolean {
+        return try {
+            // 1. Anonymize user profile (Soft Delete)
+            val updates = mapOf(
+                "name" to "Deleted",
+                "surname" to "Account",
+                "username" to "deleted_account",
+                "avatarUrl" to "",
+                "bio" to "",
+                "isActive" to false,
+                "updatedAt" to Timestamp.now()
+            )
+            db.collection("users").document(userId).update(updates).await()
+
+            // 2. Delete personal reading statuses
+            val statusesSnap = db.collection("reading_statuses").whereEqualTo("userId", userId).get().await()
+            statusesSnap.documents.forEach { it.reference.delete() } // Without await for speed
+
+            // 3. Delete personal booklists (and their junction records)
+            val listsSnap = db.collection("booklists").whereEqualTo("userId", userId).get().await()
+            listsSnap.documents.forEach { listDoc ->
+                val listId = listDoc.id
+                val junctionSnap = db.collection("booklist_books").whereEqualTo("booklistId", listId).get().await()
+                junctionSnap.documents.forEach { it.reference.delete() }
+                listDoc.reference.delete()
+            }
+
+            // 4. Delete follows (where user is follower or following)
+            val followingSnap = db.collection("follows").whereEqualTo("followerId", userId).get().await()
+            followingSnap.documents.forEach { it.reference.delete() }
+            val followersSnap = db.collection("follows").whereEqualTo("followingId", userId).get().await()
+            followersSnap.documents.forEach { it.reference.delete() }
+
+            true
+        } catch (e: Exception) {
+            Log.e(TAG, "Error cleaning up user data during soft delete", e)
+            false
+        }
+    }
+
+    suspend fun uploadProfileImage(userId: String, imageUri: android.net.Uri): String? {
+        return try {
+            val storageRef = com.google.firebase.storage.FirebaseStorage.getInstance()
+                .reference.child("avatars/$userId.jpg")
+            storageRef.putFile(imageUri).await()
+            val downloadUrl = storageRef.downloadUrl.await().toString()
+            // Update user's avatarUrl in Firestore
+            db.collection("users").document(userId).update("avatarUrl", downloadUrl, "updatedAt", Timestamp.now()).await()
+            downloadUrl
+        } catch (e: Exception) {
+            Log.e(TAG, "Error uploading profile image", e)
+            null
+        }
+    }
+
     suspend fun updateFavoriteBooks(userId: String, bookIds: List<String>): Boolean {
         return try {
             db.collection("users").document(userId).update("favoriteBooks", bookIds).await()

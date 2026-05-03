@@ -67,9 +67,8 @@ sealed class Screen(val route: String, val icon: ImageVector? = null, val label:
     object Splash : Screen("splash")
     object Login : Screen("login")
     object Register : Screen("register")
-    object VerifyEmail : Screen("verify_email?email={email}") {
-        fun createRoute(email: String) = "verify_email?email=$email"
-    }
+    object VerifyEmail : Screen("verify_email")
+    object ProfileSetup : Screen("profile_setup")
     object Home : Screen("home", Icons.Default.Home, "Home")
     object Explore : Screen("explore", Icons.Default.Search, "Explore")
     object CreatePost : Screen("create-post?postId={postId}", Icons.Default.AddCircle, "Add")
@@ -205,27 +204,52 @@ fun PaginexApp() {
     ) { padding ->
         NavHost(navController, startDestination = Screen.Splash.route, modifier = Modifier.padding(padding)) {
             composable(Screen.Splash.route) { SplashScreen { 
-                if (AuthService.isUserLoggedIn()) navController.navigate(Screen.Home.route) { popUpTo(0) }
-                else navController.navigate(Screen.Login.route) { popUpTo(0) }
+                if (AuthService.isUserLoggedIn() && AuthService.isEmailVerified()) {
+                    if (MockData.currentUser.fullName == "New User" || MockData.currentUser.username == "newuser") {
+                        navController.navigate(Screen.ProfileSetup.route) { popUpTo(0) }
+                    } else {
+                        navController.navigate(Screen.Home.route) { popUpTo(0) }
+                    }
+                } else if (AuthService.isUserLoggedIn() && !AuthService.isEmailVerified()) {
+                    navController.navigate(Screen.VerifyEmail.route) { popUpTo(0) }
+                } else {
+                    navController.navigate(Screen.Login.route) { popUpTo(0) }
+                }
             } }
             composable(Screen.Login.route) { 
                 LoginScreen(
                     onLogin = { navController.navigate(Screen.Home.route) { popUpTo(0) } },
-                    onNavigateToRegister = { navController.navigate(Screen.Register.route) }
+                    onNavigateToRegister = { navController.navigate(Screen.Register.route) },
+                    onEmailNotVerified = { navController.navigate(Screen.VerifyEmail.route) { popUpTo(0) } }
                 ) 
             }
             composable(Screen.Register.route) {
                 RegisterScreen(
-                    onLinkSent = { email -> navController.navigate(Screen.VerifyEmail.createRoute(email)) },
+                    onRegistered = { navController.navigate(Screen.VerifyEmail.route) { popUpTo(0) } },
                     onBackToLogin = { navController.popBackStack() }
                 )
             }
-            composable(
-                route = Screen.VerifyEmail.route,
-                arguments = listOf(navArgument("email") { type = NavType.StringType })
-            ) { backStackEntry ->
-                val email = backStackEntry.arguments?.getString("email") ?: ""
-                VerifyEmailScreen(email)
+            composable(Screen.VerifyEmail.route) {
+                VerifyEmailScreen(
+                    onVerified = {
+                        if (MockData.currentUser.fullName == "New User" || MockData.currentUser.username == "newuser") {
+                            navController.navigate(Screen.ProfileSetup.route) { popUpTo(0) }
+                        } else {
+                            navController.navigate(Screen.Home.route) { popUpTo(0) }
+                        }
+                    },
+                    onBackToLogin = {
+                        AuthService.logout()
+                        navController.navigate(Screen.Login.route) { popUpTo(0) }
+                    }
+                )
+            }
+            composable(Screen.ProfileSetup.route) {
+                ProfileSetupScreen(
+                    onSetupComplete = {
+                        navController.navigate(Screen.Home.route) { popUpTo(0) }
+                    }
+                )
             }
             composable(Screen.Home.route) { 
                 PaginexHomeScreen(
@@ -543,11 +567,12 @@ fun SplashScreen(onFinish: () -> Unit) {
 }
 
 @Composable
-fun LoginScreen(onLogin: () -> Unit, onNavigateToRegister: () -> Unit) {
+fun LoginScreen(onLogin: () -> Unit, onNavigateToRegister: () -> Unit, onEmailNotVerified: () -> Unit = {}) {
     var email by remember { mutableStateOf("") }
     var password by remember { mutableStateOf("") }
     val scope = rememberCoroutineScope()
     var errorMessage by remember { mutableStateOf<String?>(null) }
+    var isLoading by remember { mutableStateOf(false) }
 
     Column(modifier = Modifier.fillMaxSize().background(PaginexSpace).padding(24.dp), verticalArrangement = Arrangement.Center) {
         Text("Welcome to Paginex", fontSize = 32.sp, fontWeight = FontWeight.Bold, color = PaginexWhite)
@@ -587,14 +612,35 @@ fun LoginScreen(onLogin: () -> Unit, onNavigateToRegister: () -> Unit) {
         Spacer(modifier = Modifier.height(32.dp))
         Button(
             onClick = {
-                // For now, let's keep the mock login or implement real login
-                onLogin()
-            }, 
+                if (email.isNotBlank() && password.isNotBlank()) {
+                    isLoading = true
+                    errorMessage = null
+                    scope.launch {
+                        val result = AuthService.signIn(email, password)
+                        isLoading = false
+                        if (result.isSuccess) {
+                            FirestoreService.syncMockData()
+                            onLogin()
+                        } else {
+                            val error = result.exceptionOrNull()?.message ?: "Login failed"
+                            if (error == "EMAIL_NOT_VERIFIED") {
+                                onEmailNotVerified()
+                            } else {
+                                errorMessage = error
+                            }
+                        }
+                    }
+                } else {
+                    errorMessage = "Please enter email and password"
+                }
+            },
+            enabled = !isLoading,
             modifier = Modifier.fillMaxWidth().height(56.dp),
             colors = ButtonDefaults.buttonColors(containerColor = PaginexNeonPurple),
             shape = RoundedCornerShape(28.dp)
         ) {
-            Text("LOGIN", fontWeight = FontWeight.Bold)
+            if (isLoading) CircularProgressIndicator(color = Color.Black, modifier = Modifier.size(24.dp))
+            else Text("LOGIN", fontWeight = FontWeight.Bold)
         }
         
         Spacer(modifier = Modifier.height(32.dp))
@@ -607,16 +653,17 @@ fun LoginScreen(onLogin: () -> Unit, onNavigateToRegister: () -> Unit) {
 }
 
 @Composable
-fun RegisterScreen(onLinkSent: (String) -> Unit, onBackToLogin: () -> Unit) {
+fun RegisterScreen(onRegistered: () -> Unit, onBackToLogin: () -> Unit) {
     var email by remember { mutableStateOf("") }
+    var password by remember { mutableStateOf("") }
+    var confirmPassword by remember { mutableStateOf("") }
     val scope = rememberCoroutineScope()
     var isLoading by remember { mutableStateOf(false) }
     var errorMessage by remember { mutableStateOf<String?>(null) }
-    val context = androidx.compose.ui.platform.LocalContext.current
 
     Column(modifier = Modifier.fillMaxSize().background(PaginexSpace).padding(24.dp), verticalArrangement = Arrangement.Center) {
         Text("Join Paginex", fontSize = 32.sp, fontWeight = FontWeight.Bold, color = PaginexWhite)
-        Text("We'll send you a magic link to sign up.", color = Color.Gray, fontSize = 16.sp)
+        Text("Create your account to get started.", color = Color.Gray, fontSize = 16.sp)
 
         Spacer(modifier = Modifier.height(32.dp))
 
@@ -637,19 +684,57 @@ fun RegisterScreen(onLinkSent: (String) -> Unit, onBackToLogin: () -> Unit) {
             )
         )
 
+        Spacer(modifier = Modifier.height(16.dp))
+
+        OutlinedTextField(
+            value = password,
+            onValueChange = { password = it },
+            label = { Text("Password", color = Color.Gray) },
+            visualTransformation = androidx.compose.ui.text.input.PasswordVisualTransformation(),
+            modifier = Modifier.fillMaxWidth(),
+            colors = OutlinedTextFieldDefaults.colors(
+                focusedBorderColor = PaginexNeonPurple,
+                unfocusedBorderColor = PaginexGlassBorder,
+                focusedTextColor = PaginexWhite,
+                unfocusedTextColor = PaginexWhite
+            )
+        )
+
+        Spacer(modifier = Modifier.height(16.dp))
+
+        OutlinedTextField(
+            value = confirmPassword,
+            onValueChange = { confirmPassword = it },
+            label = { Text("Confirm Password", color = Color.Gray) },
+            visualTransformation = androidx.compose.ui.text.input.PasswordVisualTransformation(),
+            modifier = Modifier.fillMaxWidth(),
+            colors = OutlinedTextFieldDefaults.colors(
+                focusedBorderColor = PaginexNeonPurple,
+                unfocusedBorderColor = PaginexGlassBorder,
+                focusedTextColor = PaginexWhite,
+                unfocusedTextColor = PaginexWhite
+            )
+        )
+
         Spacer(modifier = Modifier.height(32.dp))
 
         Button(
             onClick = {
-                if (email.isNotBlank()) {
-                    isLoading = true
-                    scope.launch {
-                        val result = AuthService.sendSignInLink(context, email)
-                        isLoading = false
-                        if (result.isSuccess) {
-                            onLinkSent(email)
-                        } else {
-                            errorMessage = result.exceptionOrNull()?.message ?: "Something went wrong"
+                when {
+                    email.isBlank() || password.isBlank() -> errorMessage = "Please fill in all fields"
+                    password.length < 6 -> errorMessage = "Password must be at least 6 characters"
+                    password != confirmPassword -> errorMessage = "Passwords do not match"
+                    else -> {
+                        isLoading = true
+                        errorMessage = null
+                        scope.launch {
+                            val result = AuthService.signUp(email, password)
+                            isLoading = false
+                            if (result.isSuccess) {
+                                onRegistered()
+                            } else {
+                                errorMessage = result.exceptionOrNull()?.message ?: "Something went wrong"
+                            }
                         }
                     }
                 }
@@ -660,7 +745,7 @@ fun RegisterScreen(onLinkSent: (String) -> Unit, onBackToLogin: () -> Unit) {
             shape = RoundedCornerShape(28.dp)
         ) {
             if (isLoading) CircularProgressIndicator(color = Color.Black, modifier = Modifier.size(24.dp))
-            else Text("SEND MAGIC LINK", fontWeight = FontWeight.Bold)
+            else Text("SIGN UP", fontWeight = FontWeight.Bold)
         }
 
         Spacer(modifier = Modifier.height(32.dp))
@@ -670,19 +755,199 @@ fun RegisterScreen(onLinkSent: (String) -> Unit, onBackToLogin: () -> Unit) {
         }
     }
 }
+@Composable
+fun ProfileSetupScreen(onSetupComplete: () -> Unit) {
+    val user = MockData.currentUser
+    val userEmail = AuthService.getUserEmail()
+    
+    var name by remember { mutableStateOf("") }
+    var surname by remember { mutableStateOf("") }
+    var username by remember { mutableStateOf(userEmail.substringBefore("@")) }
+    var avatarUri by remember { mutableStateOf<android.net.Uri?>(null) }
+    
+    var isLoading by remember { mutableStateOf(false) }
+    val scope = rememberCoroutineScope()
+
+    val photoPickerLauncher = androidx.activity.compose.rememberLauncherForActivityResult(
+        contract = androidx.activity.result.contract.ActivityResultContracts.GetContent()
+    ) { uri: android.net.Uri? ->
+        avatarUri = uri
+    }
+
+    Box(modifier = Modifier.fillMaxSize().background(PaginexSpace)) {
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .imePadding()
+                .padding(24.dp)
+                .verticalScroll(rememberScrollState()),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            Spacer(modifier = Modifier.height(32.dp))
+            
+            Text("Complete Your Profile", fontSize = 28.sp, fontWeight = FontWeight.Bold, color = PaginexWhite)
+            Spacer(modifier = Modifier.height(8.dp))
+            Text("Tell us a bit about yourself", color = Color.Gray)
+            
+            Spacer(modifier = Modifier.height(32.dp))
+            
+            // Avatar Picker
+            Column(
+                modifier = Modifier.fillMaxWidth().clickable { photoPickerLauncher.launch("image/*") },
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                AsyncImage(
+                    model = avatarUri ?: "https://via.placeholder.com/200",
+                    contentDescription = null,
+                    modifier = Modifier
+                        .size(120.dp)
+                        .clip(CircleShape)
+                        .border(2.dp, PaginexNeonPurple, CircleShape),
+                    contentScale = ContentScale.Crop
+                )
+                Spacer(modifier = Modifier.height(12.dp))
+                Text("Select profile photo", color = PaginexNeonTeal, fontSize = 14.sp, fontWeight = FontWeight.Bold)
+            }
+            
+            Spacer(modifier = Modifier.height(32.dp))
+            
+            // Form Fields
+            CosmicInputField(label = "Email address", value = userEmail, onValueChange = { }, enabled = false)
+            Spacer(modifier = Modifier.height(16.dp))
+            CosmicInputField(label = "Username", value = username, onValueChange = { username = it })
+            Spacer(modifier = Modifier.height(16.dp))
+            CosmicInputField(label = "First Name", value = name, onValueChange = { name = it })
+            Spacer(modifier = Modifier.height(16.dp))
+            CosmicInputField(label = "Last Name", value = surname, onValueChange = { surname = it })
+            
+            Spacer(modifier = Modifier.height(48.dp))
+            
+            Button(
+                onClick = {
+                    if (name.isBlank() || username.isBlank() || isLoading) return@Button
+                    isLoading = true
+                    scope.launch {
+                        var newAvatarUrl = ""
+                        if (avatarUri != null) {
+                            val uploadedUrl = FirestoreService.uploadProfileImage(user.id, avatarUri!!)
+                            if (uploadedUrl != null) newAvatarUrl = uploadedUrl
+                        }
+                        
+                        val updates = mapOf(
+                            "name" to name,
+                            "surname" to surname,
+                            "username" to username,
+                            "avatarUrl" to newAvatarUrl
+                        )
+                        val success = FirestoreService.updateUserProfile(user.id, updates)
+                        
+                        if (success) {
+                            FirestoreService.syncMockData()
+                            onSetupComplete()
+                        }
+                        isLoading = false
+                    }
+                }, 
+                modifier = Modifier.fillMaxWidth().height(56.dp),
+                colors = ButtonDefaults.buttonColors(containerColor = PaginexNeonPurple),
+                shape = RoundedCornerShape(28.dp),
+                enabled = name.isNotBlank() && username.isNotBlank() && !isLoading
+            ) { 
+                if (isLoading) {
+                    CircularProgressIndicator(color = Color.Black, modifier = Modifier.size(24.dp))
+                } else {
+                    Text("COMPLETE SETUP", fontWeight = FontWeight.ExtraBold, letterSpacing = 1.sp, color = Color.Black) 
+                }
+            }
+        }
+    }
+}
 
 @Composable
-fun VerifyEmailScreen(email: String) {
-    Column(modifier = Modifier.fillMaxSize().background(PaginexSpace).padding(24.dp), verticalArrangement = Arrangement.Center, horizontalAlignment = Alignment.CenterHorizontally) {
+fun VerifyEmailScreen(onVerified: () -> Unit, onBackToLogin: () -> Unit) {
+    val scope = rememberCoroutineScope()
+    var isChecking by remember { mutableStateOf(false) }
+    var message by remember { mutableStateOf<String?>(null) }
+    var resendCooldown by remember { mutableStateOf(0) }
+    val userEmail = AuthService.getCurrentUser()?.email ?: ""
+
+    // Countdown timer for resend cooldown
+    LaunchedEffect(resendCooldown) {
+        if (resendCooldown > 0) {
+            delay(1000)
+            resendCooldown--
+        }
+    }
+
+    Column(
+        modifier = Modifier.fillMaxSize().background(PaginexSpace).padding(24.dp),
+        verticalArrangement = Arrangement.Center,
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
         Icon(Icons.Default.Email, contentDescription = null, tint = PaginexNeonPurple, modifier = Modifier.size(80.dp))
         Spacer(modifier = Modifier.height(24.dp))
-        Text("Check your email", fontSize = 24.sp, fontWeight = FontWeight.Bold, color = PaginexWhite)
+        Text("Verify your email", fontSize = 24.sp, fontWeight = FontWeight.Bold, color = PaginexWhite)
         Spacer(modifier = Modifier.height(16.dp))
         Text(
-            "We sent a sign-in link to $email. Click the link in the email to complete your registration.",
+            "We sent a verification email to $userEmail. Please click the link in the email, then tap the button below.",
             textAlign = TextAlign.Center,
             color = Color.Gray
         )
+
+        if (message != null) {
+            Spacer(modifier = Modifier.height(16.dp))
+            Text(message!!, color = Color(0xFFFF6B6B), textAlign = TextAlign.Center)
+        }
+
+        Spacer(modifier = Modifier.height(32.dp))
+
+        Button(
+            onClick = {
+                isChecking = true
+                message = null
+                scope.launch {
+                    val verified = AuthService.reloadUser()
+                    isChecking = false
+                    if (verified) {
+                        FirestoreService.syncMockData()
+                        onVerified()
+                    } else {
+                        message = "Email not verified yet. Please check your inbox and click the verification link."
+                    }
+                }
+            },
+            enabled = !isChecking,
+            modifier = Modifier.fillMaxWidth().height(56.dp),
+            colors = ButtonDefaults.buttonColors(containerColor = PaginexNeonPurple),
+            shape = RoundedCornerShape(28.dp)
+        ) {
+            if (isChecking) CircularProgressIndicator(color = Color.Black, modifier = Modifier.size(24.dp))
+            else Text("I'VE VERIFIED MY EMAIL", fontWeight = FontWeight.Bold)
+        }
+
+        Spacer(modifier = Modifier.height(16.dp))
+
+        TextButton(
+            onClick = {
+                scope.launch {
+                    AuthService.sendVerificationEmail()
+                    resendCooldown = 60
+                    message = "Verification email resent!"
+                }
+            },
+            enabled = resendCooldown == 0
+        ) {
+            Text(
+                if (resendCooldown > 0) "Resend in ${resendCooldown}s" else "Resend verification email",
+                color = if (resendCooldown > 0) Color.Gray else PaginexNeonTeal
+            )
+        }
+
+        Spacer(modifier = Modifier.height(16.dp))
+
+        TextButton(onClick = onBackToLogin) {
+            Text("Back to Login", color = Color.Gray)
+        }
     }
 }
 
@@ -1712,10 +1977,27 @@ fun PaginexProfileScreen(
 @Composable
 fun EditProfileScreen(onSave: () -> Unit) {
     val user = MockData.currentUser
-    var email by remember { mutableStateOf("user@paginex.com") } // Placeholder
-    var name by remember { mutableStateOf(user.fullName) }
-    var oldPassword by remember { mutableStateOf("") }
-    var newPassword by remember { mutableStateOf("") }
+    val userEmail = AuthService.getUserEmail()
+    
+    // We parse name/surname from fullName for simpler editing, though you could keep it as fullName
+    val initialName = user.fullName.substringBefore(" ")
+    val initialSurname = user.fullName.substringAfter(" ", "")
+    
+    var name by remember { mutableStateOf(initialName) }
+    var surname by remember { mutableStateOf(initialSurname) }
+    var username by remember { mutableStateOf(user.username) }
+    var bio by remember { mutableStateOf(user.bio) }
+    var location by remember { mutableStateOf(user.location) }
+    var avatarUri by remember { mutableStateOf<android.net.Uri?>(null) }
+    
+    var isLoading by remember { mutableStateOf(false) }
+    val scope = rememberCoroutineScope()
+
+    val photoPickerLauncher = androidx.activity.compose.rememberLauncherForActivityResult(
+        contract = androidx.activity.result.contract.ActivityResultContracts.GetContent()
+    ) { uri: android.net.Uri? ->
+        avatarUri = uri
+    }
 
     Box(modifier = Modifier.fillMaxSize().background(PaginexSpace)) {
         Column(
@@ -1742,11 +2024,11 @@ fun EditProfileScreen(onSave: () -> Unit) {
             
             // Avatar Edit
             Column(
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier.fillMaxWidth().clickable { photoPickerLauncher.launch("image/*") },
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
                 AsyncImage(
-                    model = user.avatarUrl.ifEmpty { "https://via.placeholder.com/200" },
+                    model = avatarUri ?: user.avatarUrl.ifEmpty { "https://via.placeholder.com/200" },
                     contentDescription = null,
                     modifier = Modifier
                         .size(100.dp)
@@ -1761,28 +2043,60 @@ fun EditProfileScreen(onSave: () -> Unit) {
             Spacer(modifier = Modifier.height(40.dp))
             
             // Form Fields
-            CosmicInputField(label = "Email address", value = email, onValueChange = { email = it })
+            CosmicInputField(label = "Email address (Cannot be changed)", value = userEmail, onValueChange = { }, enabled = false)
             Spacer(modifier = Modifier.height(16.dp))
-            CosmicInputField(label = "Name", value = name, onValueChange = { name = it })
-            
-            Spacer(modifier = Modifier.height(32.dp))
-            Text("Change password", color = PaginexWhite, fontWeight = FontWeight.Bold, fontSize = 18.sp)
+            CosmicInputField(label = "Username", value = username, onValueChange = { username = it })
             Spacer(modifier = Modifier.height(16.dp))
-            
-            CosmicInputField(label = "Old password", value = oldPassword, onValueChange = { oldPassword = it })
+            CosmicInputField(label = "First Name", value = name, onValueChange = { name = it })
             Spacer(modifier = Modifier.height(16.dp))
-            CosmicInputField(label = "New password", value = newPassword, onValueChange = { newPassword = it })
+            CosmicInputField(label = "Last Name", value = surname, onValueChange = { surname = it })
+            Spacer(modifier = Modifier.height(16.dp))
+            CosmicInputField(label = "Bio", value = bio, onValueChange = { bio = it }, isLongText = true)
+            Spacer(modifier = Modifier.height(16.dp))
+            CosmicInputField(label = "Location", value = location, onValueChange = { location = it })
             
             Spacer(modifier = Modifier.height(48.dp))
             
             Button(
-                onClick = onSave, 
+                onClick = {
+                    if (isLoading) return@Button
+                    isLoading = true
+                    scope.launch {
+                        // 1. Upload new avatar if selected
+                        var newAvatarUrl = user.avatarUrl
+                        if (avatarUri != null) {
+                            val uploadedUrl = FirestoreService.uploadProfileImage(user.id, avatarUri!!)
+                            if (uploadedUrl != null) newAvatarUrl = uploadedUrl
+                        }
+                        
+                        // 2. Update Firestore
+                        val updates = mapOf(
+                            "name" to name,
+                            "surname" to surname,
+                            "username" to username,
+                            "bio" to bio,
+                            "location" to location,
+                            "avatarUrl" to newAvatarUrl
+                        )
+                        val success = FirestoreService.updateUserProfile(user.id, updates)
+                        
+                        if (success) {
+                            FirestoreService.syncMockData() // Refresh local cache
+                            onSave()
+                        }
+                        isLoading = false
+                    }
+                }, 
                 modifier = Modifier.align(Alignment.CenterHorizontally).height(50.dp).width(200.dp),
                 colors = ButtonDefaults.buttonColors(containerColor = PaginexNeonPurple),
                 shape = RoundedCornerShape(25.dp),
                 elevation = ButtonDefaults.buttonElevation(defaultElevation = 0.dp)
             ) { 
-                Text("Save", fontWeight = FontWeight.ExtraBold, letterSpacing = 1.sp, color = Color.Black) 
+                if (isLoading) {
+                    CircularProgressIndicator(color = Color.Black, modifier = Modifier.size(24.dp))
+                } else {
+                    Text("Save", fontWeight = FontWeight.ExtraBold, letterSpacing = 1.sp, color = Color.Black) 
+                }
             }
         }
     }
@@ -1790,18 +2104,19 @@ fun EditProfileScreen(onSave: () -> Unit) {
 }
 
 @Composable
-fun CosmicInputField(label: String, value: String, onValueChange: (String) -> Unit, isLongText: Boolean = false) {
+fun CosmicInputField(label: String, value: String, onValueChange: (String) -> Unit, isLongText: Boolean = false, enabled: Boolean = true) {
     Column {
         Text(label, color = PaginexNeonTeal, fontSize = 12.sp, fontWeight = FontWeight.Bold)
         Spacer(modifier = Modifier.height(8.dp))
         Card(
-            colors = CardDefaults.cardColors(containerColor = PaginexGlass),
+            colors = CardDefaults.cardColors(containerColor = if (enabled) PaginexGlass else PaginexGlass.copy(alpha = 0.5f)),
             shape = RoundedCornerShape(16.dp),
             border = BorderStroke(1.dp, PaginexGlassBorder)
         ) {
             OutlinedTextField(
                 value = value,
                 onValueChange = onValueChange,
+                enabled = enabled,
                 modifier = Modifier.fillMaxWidth().then(if (isLongText) Modifier.height(120.dp) else Modifier),
                 colors = OutlinedTextFieldDefaults.colors(
                     unfocusedContainerColor = Color.Transparent,
@@ -1809,7 +2124,10 @@ fun CosmicInputField(label: String, value: String, onValueChange: (String) -> Un
                     unfocusedBorderColor = Color.Transparent,
                     focusedBorderColor = Color.Transparent,
                     focusedTextColor = PaginexWhite,
-                    unfocusedTextColor = PaginexWhite
+                    unfocusedTextColor = PaginexWhite,
+                    disabledTextColor = Color.Gray,
+                    disabledContainerColor = Color.Transparent,
+                    disabledBorderColor = Color.Transparent,
                 ),
                 shape = RoundedCornerShape(16.dp)
             )
@@ -3786,6 +4104,181 @@ fun SettingsScreen(
                 Icon(Icons.Default.KeyboardArrowRight, null, tint = Color.Gray)
             }
             Divider(color = PaginexGlassBorder, thickness = 0.5.dp, modifier = Modifier.padding(horizontal = 24.dp))
+            
+            var showPasswordDialog by remember { mutableStateOf(false) }
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable { showPasswordDialog = true }
+                    .padding(horizontal = 24.dp, vertical = 16.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Icon(Icons.Default.Lock, null, tint = PaginexNeonPurple, modifier = Modifier.size(24.dp))
+                Spacer(modifier = Modifier.width(16.dp))
+                Text("Password", color = PaginexWhite, fontSize = 16.sp, modifier = Modifier.weight(1f))
+                Icon(Icons.Default.KeyboardArrowRight, null, tint = Color.Gray)
+            }
+            Divider(color = PaginexGlassBorder, thickness = 0.5.dp, modifier = Modifier.padding(horizontal = 24.dp))
+
+            if (showPasswordDialog) {
+                var oldPassword by remember { mutableStateOf("") }
+                var newPassword by remember { mutableStateOf("") }
+                var isLoading by remember { mutableStateOf(false) }
+                var errorMessage by remember { mutableStateOf<String?>(null) }
+                val scope = rememberCoroutineScope()
+
+                AlertDialog(
+                    onDismissRequest = { if (!isLoading) showPasswordDialog = false },
+                    containerColor = PaginexSpace,
+                    title = { Text("Change Password", color = PaginexWhite, fontWeight = FontWeight.Bold) },
+                    text = {
+                        Column {
+                            if (errorMessage != null) {
+                                Text(errorMessage!!, color = Color.Red, fontSize = 12.sp, modifier = Modifier.padding(bottom = 8.dp))
+                            }
+                            OutlinedTextField(
+                                value = oldPassword,
+                                onValueChange = { oldPassword = it },
+                                label = { Text("Current Password", color = Color.Gray) },
+                                visualTransformation = androidx.compose.ui.text.input.PasswordVisualTransformation(),
+                                colors = OutlinedTextFieldDefaults.colors(
+                                    focusedBorderColor = PaginexNeonPurple,
+                                    unfocusedBorderColor = PaginexGlassBorder,
+                                    focusedTextColor = PaginexWhite,
+                                    unfocusedTextColor = PaginexWhite
+                                )
+                            )
+                            Spacer(modifier = Modifier.height(8.dp))
+                            OutlinedTextField(
+                                value = newPassword,
+                                onValueChange = { newPassword = it },
+                                label = { Text("New Password", color = Color.Gray) },
+                                visualTransformation = androidx.compose.ui.text.input.PasswordVisualTransformation(),
+                                colors = OutlinedTextFieldDefaults.colors(
+                                    focusedBorderColor = PaginexNeonPurple,
+                                    unfocusedBorderColor = PaginexGlassBorder,
+                                    focusedTextColor = PaginexWhite,
+                                    unfocusedTextColor = PaginexWhite
+                                )
+                            )
+                        }
+                    },
+                    confirmButton = {
+                        Button(
+                            onClick = {
+                                if (oldPassword.isBlank() || newPassword.isBlank()) {
+                                    errorMessage = "Please fill in all fields"
+                                    return@Button
+                                }
+                                if (newPassword.length < 6) {
+                                    errorMessage = "New password must be at least 6 characters"
+                                    return@Button
+                                }
+                                isLoading = true
+                                errorMessage = null
+                                scope.launch {
+                                    val result = AuthService.changePassword(oldPassword, newPassword)
+                                    isLoading = false
+                                    if (result.isSuccess) {
+                                        showPasswordDialog = false
+                                    } else {
+                                        errorMessage = result.exceptionOrNull()?.message ?: "Failed to change password"
+                                    }
+                                }
+                            },
+                            colors = ButtonDefaults.buttonColors(containerColor = PaginexNeonPurple)
+                        ) {
+                            if (isLoading) CircularProgressIndicator(color = Color.Black, modifier = Modifier.size(16.dp))
+                            else Text("Save", color = Color.Black, fontWeight = FontWeight.Bold)
+                        }
+                    },
+                    dismissButton = {
+                        TextButton(onClick = { showPasswordDialog = false }, enabled = !isLoading) {
+                            Text("Cancel", color = Color.Gray)
+                        }
+                    }
+                )
+            }
+            
+            var showDeleteAccountDialog by remember { mutableStateOf(false) }
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable { showDeleteAccountDialog = true }
+                    .padding(horizontal = 24.dp, vertical = 16.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Icon(Icons.Default.Delete, null, tint = Color.Red, modifier = Modifier.size(24.dp))
+                Spacer(modifier = Modifier.width(16.dp))
+                Text("Delete account", color = Color.Red, fontSize = 16.sp, modifier = Modifier.weight(1f))
+                Icon(Icons.Default.KeyboardArrowRight, null, tint = Color.Gray)
+            }
+            Divider(color = PaginexGlassBorder, thickness = 0.5.dp, modifier = Modifier.padding(horizontal = 24.dp))
+
+            if (showDeleteAccountDialog) {
+                var password by remember { mutableStateOf("") }
+                var isLoading by remember { mutableStateOf(false) }
+                var errorMessage by remember { mutableStateOf<String?>(null) }
+                val scope = rememberCoroutineScope()
+
+                AlertDialog(
+                    onDismissRequest = { if (!isLoading) showDeleteAccountDialog = false },
+                    containerColor = PaginexSpace,
+                    title = { Text("Delete Account", color = Color.Red, fontWeight = FontWeight.Bold) },
+                    text = {
+                        Column {
+                            Text("This action will anonymize your profile but keep your posts visible as 'Deleted Account'. Your personal library, followers, and booklists will be permanently deleted. This action cannot be undone.", color = Color.Gray, fontSize = 14.sp)
+                            Spacer(modifier = Modifier.height(16.dp))
+                            if (errorMessage != null) {
+                                Text(errorMessage!!, color = Color.Red, fontSize = 12.sp, modifier = Modifier.padding(bottom = 8.dp))
+                            }
+                            OutlinedTextField(
+                                value = password,
+                                onValueChange = { password = it },
+                                label = { Text("Enter Password to Confirm", color = Color.Gray) },
+                                visualTransformation = androidx.compose.ui.text.input.PasswordVisualTransformation(),
+                                colors = OutlinedTextFieldDefaults.colors(
+                                    focusedBorderColor = Color.Red,
+                                    unfocusedBorderColor = PaginexGlassBorder,
+                                    focusedTextColor = PaginexWhite,
+                                    unfocusedTextColor = PaginexWhite
+                                )
+                            )
+                        }
+                    },
+                    confirmButton = {
+                        Button(
+                            onClick = {
+                                if (password.isBlank()) {
+                                    errorMessage = "Please enter your password"
+                                    return@Button
+                                }
+                                isLoading = true
+                                errorMessage = null
+                                scope.launch {
+                                    val result = AuthService.deleteAccount(password)
+                                    isLoading = false
+                                    if (result.isSuccess) {
+                                        showDeleteAccountDialog = false
+                                        onLogout()
+                                    } else {
+                                        errorMessage = result.exceptionOrNull()?.message ?: "Failed to delete account"
+                                    }
+                                }
+                            },
+                            colors = ButtonDefaults.buttonColors(containerColor = Color.Red)
+                        ) {
+                            if (isLoading) CircularProgressIndicator(color = Color.White, modifier = Modifier.size(16.dp))
+                            else Text("Delete", color = Color.White, fontWeight = FontWeight.Bold)
+                        }
+                    },
+                    dismissButton = {
+                        TextButton(onClick = { showDeleteAccountDialog = false }, enabled = !isLoading) {
+                            Text("Cancel", color = Color.Gray)
+                        }
+                    }
+                )
+            }
 
             Spacer(modifier = Modifier.height(32.dp))
 

@@ -1,69 +1,81 @@
 package com.example.paginex
 
-import android.content.Context
 import android.util.Log
-import com.google.firebase.auth.ActionCodeSettings
+import com.google.firebase.auth.EmailAuthProvider
 import com.google.firebase.auth.FirebaseAuth
 import kotlinx.coroutines.tasks.await
 
 object AuthService {
     private val auth = FirebaseAuth.getInstance()
     private const val TAG = "AuthService"
-    private const val PREFS_NAME = "paginex_auth"
-    private const val KEY_EMAIL = "pending_email"
 
     fun getCurrentUser() = auth.currentUser
     fun isUserLoggedIn() = auth.currentUser != null
     fun getUid() = auth.currentUser?.uid ?: "u1"
+    fun getUserEmail() = auth.currentUser?.email ?: ""
 
-    fun savePendingEmail(context: Context, email: String) {
-        context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-            .edit().putString(KEY_EMAIL, email).apply()
+    fun isEmailVerified(): Boolean {
+        return auth.currentUser?.isEmailVerified ?: false
     }
 
-    fun getPendingEmail(context: Context): String? {
-        return context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-            .getString(KEY_EMAIL, null)
-    }
-
-    suspend fun sendSignInLink(context: Context, email: String): Result<Unit> {
-        val actionCodeSettings = ActionCodeSettings.newBuilder()
-            .setUrl("https://paginex.page.link/finishSignUp")
-            .setHandleCodeInApp(true)
-            .setAndroidPackageName("com.example.paginex", true, "24")
-            .build()
-
+    suspend fun reloadUser(): Boolean {
         return try {
-            auth.sendSignInLinkToEmail(email, actionCodeSettings).await()
-            savePendingEmail(context, email)
+            auth.currentUser?.reload()?.await()
+            auth.currentUser?.isEmailVerified ?: false
+        } catch (e: Exception) {
+            Log.e(TAG, "Error reloading user", e)
+            false
+        }
+    }
+
+    suspend fun sendVerificationEmail(): Result<Unit> {
+        return try {
+            auth.currentUser?.sendEmailVerification()?.await()
             Result.success(Unit)
         } catch (e: Exception) {
-            Log.e(TAG, "Error sending sign in link", e)
+            Log.e(TAG, "Error sending verification email", e)
             Result.failure(e)
         }
     }
 
-    suspend fun signInWithEmailLink(email: String, link: String): Result<String> {
+    suspend fun signUp(email: String, password: String): Result<String> {
         return try {
-            if (auth.isSignInWithEmailLink(link)) {
-                val result = auth.signInWithEmailLink(email, link).await()
-                val user = result.user
-                if (user != null) {
-                    val profile = FirestoreService.getUserById(user.uid)
-                    if (profile == null) {
-                        FirestoreService.createUserProfile(
-                            userId = user.uid,
-                            email = email,
-                            name = "New",
-                            surname = "User"
-                        )
-                    }
-                    Result.success(user.uid)
+            val result = auth.createUserWithEmailAndPassword(email, password).await()
+            val user = result.user
+            if (user != null) {
+                // Send verification email
+                user.sendEmailVerification().await()
+                // Create user profile in Firestore
+                FirestoreService.createUserProfile(
+                    userId = user.uid,
+                    email = email,
+                    name = "New",
+                    surname = "User"
+                )
+                Result.success(user.uid)
+            } else {
+                Result.failure(Exception("Sign up failed"))
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error signing up", e)
+            Result.failure(e)
+        }
+    }
+
+    suspend fun signIn(email: String, password: String): Result<String> {
+        return try {
+            val result = auth.signInWithEmailAndPassword(email, password).await()
+            val user = result.user
+            if (user != null) {
+                // Reload to get latest emailVerified status
+                user.reload().await()
+                if (!user.isEmailVerified) {
+                    Result.failure(Exception("EMAIL_NOT_VERIFIED"))
                 } else {
-                    Result.failure(Exception("Sign in failed"))
+                    Result.success(user.uid)
                 }
             } else {
-                Result.failure(Exception("Invalid link"))
+                Result.failure(Exception("Sign in failed"))
             }
         } catch (e: Exception) {
             Log.e(TAG, "Error signing in", e)
@@ -71,8 +83,44 @@ object AuthService {
         }
     }
 
-    fun isSignInWithEmailLink(link: String): Boolean {
-        return auth.isSignInWithEmailLink(link)
+    suspend fun changePassword(oldPassword: String, newPassword: String): Result<Unit> {
+        return try {
+            val user = auth.currentUser ?: return Result.failure(Exception("No user logged in"))
+            val email = user.email ?: return Result.failure(Exception("No email found"))
+            // Re-authenticate first
+            val credential = EmailAuthProvider.getCredential(email, oldPassword)
+            user.reauthenticate(credential).await()
+            // Update password
+            user.updatePassword(newPassword).await()
+            Result.success(Unit)
+        } catch (e: Exception) {
+            Log.e(TAG, "Error changing password", e)
+            Result.failure(e)
+        }
+    }
+
+    suspend fun deleteAccount(password: String): Result<Unit> {
+        return try {
+            val user = auth.currentUser ?: return Result.failure(Exception("No user logged in"))
+            val email = user.email ?: return Result.failure(Exception("No email found"))
+            
+            // Re-authenticate first
+            val credential = EmailAuthProvider.getCredential(email, password)
+            user.reauthenticate(credential).await()
+            
+            // Perform soft delete in Firestore
+            val success = FirestoreService.deleteUserData(user.uid)
+            if (!success) {
+                return Result.failure(Exception("Failed to clean up user data"))
+            }
+            
+            // Delete the account from Firebase Auth
+            user.delete().await()
+            Result.success(Unit)
+        } catch (e: Exception) {
+            Log.e(TAG, "Error deleting account", e)
+            Result.failure(e)
+        }
     }
 
     fun logout() {

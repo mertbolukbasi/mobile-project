@@ -1,10 +1,10 @@
-#Sun May 03 14:59:24 TRT 2026
-base.0=/home/zeref/Desktop/Mobile_Application/app/build/intermediates/dex/debug/mergeExtDexDebug/classes.dex
-base.1=/home/zeref/Desktop/Mobile_Application/app/build/intermediates/dex/debug/mergeProjectDexDebug/0/classes.dex
-base.2=/home/zeref/Desktop/Mobile_Application/app/build/intermediates/dex/debug/mergeProjectDexDebug/6/classes.dex
-base.3=/home/zeref/Desktop/Mobile_Application/app/build/intermediates/dex/debug/mergeExtDexDebug/classes2.dex
-base.4=/home/zeref/Desktop/Mobile_Application/app/build/intermediates/dex/debug/mergeExtDexDebug/classes3.dex
-base.5=/home/zeref/Desktop/Mobile_Application/app/build/intermediates/dex/debug/mergeExtDexDebug/classes4.dex
+#Sun May 03 16:01:35 TRT 2026
+base.0=/home/burak/Desktop/mobile-project/app/build/intermediates/dex/debug/mergeExtDexDebug/classes.dex
+base.1=/home/burak/Desktop/mobile-project/app/build/intermediates/dex/debug/mergeProjectDexDebug/0/classes.dex
+base.2=/home/burak/Desktop/mobile-project/app/build/intermediates/dex/debug/mergeProjectDexDebug/6/classes.dex
+base.3=/home/burak/Desktop/mobile-project/app/build/intermediates/dex/debug/mergeExtDexDebug/classes2.dex
+base.4=/home/burak/Desktop/mobile-project/app/build/intermediates/dex/debug/mergeExtDexDebug/classes3.dex
+base.5=/home/burak/Desktop/mobile-project/app/build/intermediates/dex/debug/mergeExtDexDebug/classes4.dex
 path.0=classes.dex
 path.1=0/classes.dex
 path.2=6/classes.dex
