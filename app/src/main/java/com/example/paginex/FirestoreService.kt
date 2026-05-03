@@ -339,7 +339,7 @@ object FirestoreService {
         return try {
             val postsSnap = db.collection("posts").orderBy("createdAt").get().await()
             val posts = mutableListOf<Post>()
-            val currentUserId = "u1"
+            val currentUserId = AuthService.getUid()
 
             // Optimization: Fetch all books once and cache them
             val booksSnap = db.collection("books").get().await()
@@ -844,6 +844,26 @@ object FirestoreService {
         }
     }
 
+    suspend fun createUserProfile(userId: String, email: String, name: String, surname: String): Boolean {
+        return try {
+            val newUser = FireUser(
+                id = userId,
+                username = email.substringBefore("@"),
+                name = name,
+                surname = surname,
+                email = email,
+                isActive = true,
+                createdAt = Timestamp.now(),
+                updatedAt = Timestamp.now()
+            )
+            db.collection("users").document(userId).set(newUser).await()
+            true
+        } catch (e: Exception) {
+            Log.e(TAG, "Error creating user profile", e)
+            false
+        }
+    }
+
     suspend fun updateFavoriteBooks(userId: String, bookIds: List<String>): Boolean {
         return try {
             db.collection("users").document(userId).update("favoriteBooks", bookIds).await()
@@ -1033,16 +1053,17 @@ object FirestoreService {
 
     suspend fun syncMockData() {
         try {
+            val currentUserId = AuthService.getUid()
             withContext(kotlinx.coroutines.NonCancellable) {
                 val booksDef = async { getBooks() }
                 val postsDef = async { getFeed() }
-                val userDef = async { getUserProfile("u1") }
+                val userDef = async { getUserProfile(currentUserId) }
                 val listsSnapDef = async { db.collection("booklists").get().await() }
                 val exploreSnapDef = async { db.collection("explore_images").get().await() }
                 val statusesDef = async { getReadingStatuses() }
                 val allUsersDef = async { db.collection("users").get().await() }
 
-                val userSavesSnapInitial = db.collection("saves").whereEqualTo("userId", "u1").get().await()
+                val userSavesSnapInitial = db.collection("saves").whereEqualTo("userId", currentUserId).get().await()
                 val userSavedIdsInitial = userSavesSnapInitial.documents.mapNotNull { it.getString("tableId") }.toSet()
                 
                 // We need the actual booklist IDs first to separate book saves from booklist saves

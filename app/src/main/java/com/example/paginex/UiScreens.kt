@@ -66,6 +66,10 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 sealed class Screen(val route: String, val icon: ImageVector? = null, val label: String? = null) {
     object Splash : Screen("splash")
     object Login : Screen("login")
+    object Register : Screen("register")
+    object VerifyEmail : Screen("verify_email?email={email}") {
+        fun createRoute(email: String) = "verify_email?email=$email"
+    }
     object Home : Screen("home", Icons.Default.Home, "Home")
     object Explore : Screen("explore", Icons.Default.Search, "Explore")
     object CreatePost : Screen("create-post?postId={postId}", Icons.Default.AddCircle, "Add")
@@ -200,8 +204,29 @@ fun PaginexApp() {
         }
     ) { padding ->
         NavHost(navController, startDestination = Screen.Splash.route, modifier = Modifier.padding(padding)) {
-            composable(Screen.Splash.route) { SplashScreen { navController.navigate(Screen.Login.route) } }
-            composable(Screen.Login.route) { LoginScreen { navController.navigate(Screen.Home.route) } }
+            composable(Screen.Splash.route) { SplashScreen { 
+                if (AuthService.isUserLoggedIn()) navController.navigate(Screen.Home.route) { popUpTo(0) }
+                else navController.navigate(Screen.Login.route) { popUpTo(0) }
+            } }
+            composable(Screen.Login.route) { 
+                LoginScreen(
+                    onLogin = { navController.navigate(Screen.Home.route) { popUpTo(0) } },
+                    onNavigateToRegister = { navController.navigate(Screen.Register.route) }
+                ) 
+            }
+            composable(Screen.Register.route) {
+                RegisterScreen(
+                    onLinkSent = { email -> navController.navigate(Screen.VerifyEmail.createRoute(email)) },
+                    onBackToLogin = { navController.popBackStack() }
+                )
+            }
+            composable(
+                route = Screen.VerifyEmail.route,
+                arguments = listOf(navArgument("email") { type = NavType.StringType })
+            ) { backStackEntry ->
+                val email = backStackEntry.arguments?.getString("email") ?: ""
+                VerifyEmailScreen(email)
+            }
             composable(Screen.Home.route) { 
                 PaginexHomeScreen(
                     onNavigateToDetail = { postId -> navController.navigate("detail/$postId") },
@@ -518,14 +543,24 @@ fun SplashScreen(onFinish: () -> Unit) {
 }
 
 @Composable
-fun LoginScreen(onLogin: () -> Unit) {
+fun LoginScreen(onLogin: () -> Unit, onNavigateToRegister: () -> Unit) {
+    var email by remember { mutableStateOf("") }
+    var password by remember { mutableStateOf("") }
+    val scope = rememberCoroutineScope()
+    var errorMessage by remember { mutableStateOf<String?>(null) }
+
     Column(modifier = Modifier.fillMaxSize().background(PaginexSpace).padding(24.dp), verticalArrangement = Arrangement.Center) {
         Text("Welcome to Paginex", fontSize = 32.sp, fontWeight = FontWeight.Bold, color = PaginexWhite)
 
         Spacer(modifier = Modifier.height(32.dp))
+        
+        if (errorMessage != null) {
+            Text(errorMessage!!, color = Color.Red, modifier = Modifier.padding(bottom = 8.dp))
+        }
+
         OutlinedTextField(
-            value = "", 
-            onValueChange = {}, 
+            value = email, 
+            onValueChange = { email = it }, 
             label = { Text("Email", color = Color.Gray) }, 
             modifier = Modifier.fillMaxWidth(),
             colors = OutlinedTextFieldDefaults.colors(
@@ -537,9 +572,10 @@ fun LoginScreen(onLogin: () -> Unit) {
         )
         Spacer(modifier = Modifier.height(16.dp))
         OutlinedTextField(
-            value = "", 
-            onValueChange = {}, 
+            value = password, 
+            onValueChange = { password = it }, 
             label = { Text("Password", color = Color.Gray) }, 
+            visualTransformation = androidx.compose.ui.text.input.PasswordVisualTransformation(),
             modifier = Modifier.fillMaxWidth(),
             colors = OutlinedTextFieldDefaults.colors(
                 focusedBorderColor = PaginexNeonPurple, 
@@ -550,8 +586,11 @@ fun LoginScreen(onLogin: () -> Unit) {
         )
         Spacer(modifier = Modifier.height(32.dp))
         Button(
-            onClick = onLogin, 
-            modifier = Modifier.fillMaxWidth().height(56.dp), 
+            onClick = {
+                // For now, let's keep the mock login or implement real login
+                onLogin()
+            }, 
+            modifier = Modifier.fillMaxWidth().height(56.dp),
             colors = ButtonDefaults.buttonColors(containerColor = PaginexNeonPurple),
             shape = RoundedCornerShape(28.dp)
         ) {
@@ -562,8 +601,88 @@ fun LoginScreen(onLogin: () -> Unit) {
         
         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center) {
             Text("Don't have an account? ", color = Color.Gray)
-            Text("Sign Up", color = PaginexNeonPurple, fontWeight = FontWeight.Bold, modifier = Modifier.clickable { })
+            Text("Sign Up", color = PaginexNeonPurple, fontWeight = FontWeight.Bold, modifier = Modifier.clickable { onNavigateToRegister() })
         }
+    }
+}
+
+@Composable
+fun RegisterScreen(onLinkSent: (String) -> Unit, onBackToLogin: () -> Unit) {
+    var email by remember { mutableStateOf("") }
+    val scope = rememberCoroutineScope()
+    var isLoading by remember { mutableStateOf(false) }
+    var errorMessage by remember { mutableStateOf<String?>(null) }
+    val context = androidx.compose.ui.platform.LocalContext.current
+
+    Column(modifier = Modifier.fillMaxSize().background(PaginexSpace).padding(24.dp), verticalArrangement = Arrangement.Center) {
+        Text("Join Paginex", fontSize = 32.sp, fontWeight = FontWeight.Bold, color = PaginexWhite)
+        Text("We'll send you a magic link to sign up.", color = Color.Gray, fontSize = 16.sp)
+
+        Spacer(modifier = Modifier.height(32.dp))
+
+        if (errorMessage != null) {
+            Text(errorMessage!!, color = Color.Red, modifier = Modifier.padding(bottom = 8.dp))
+        }
+
+        OutlinedTextField(
+            value = email,
+            onValueChange = { email = it },
+            label = { Text("Email", color = Color.Gray) },
+            modifier = Modifier.fillMaxWidth(),
+            colors = OutlinedTextFieldDefaults.colors(
+                focusedBorderColor = PaginexNeonPurple,
+                unfocusedBorderColor = PaginexGlassBorder,
+                focusedTextColor = PaginexWhite,
+                unfocusedTextColor = PaginexWhite
+            )
+        )
+
+        Spacer(modifier = Modifier.height(32.dp))
+
+        Button(
+            onClick = {
+                if (email.isNotBlank()) {
+                    isLoading = true
+                    scope.launch {
+                        val result = AuthService.sendSignInLink(context, email)
+                        isLoading = false
+                        if (result.isSuccess) {
+                            onLinkSent(email)
+                        } else {
+                            errorMessage = result.exceptionOrNull()?.message ?: "Something went wrong"
+                        }
+                    }
+                }
+            },
+            enabled = !isLoading,
+            modifier = Modifier.fillMaxWidth().height(56.dp),
+            colors = ButtonDefaults.buttonColors(containerColor = PaginexNeonPurple),
+            shape = RoundedCornerShape(28.dp)
+        ) {
+            if (isLoading) CircularProgressIndicator(color = Color.Black, modifier = Modifier.size(24.dp))
+            else Text("SEND MAGIC LINK", fontWeight = FontWeight.Bold)
+        }
+
+        Spacer(modifier = Modifier.height(32.dp))
+
+        TextButton(onClick = onBackToLogin, modifier = Modifier.align(Alignment.CenterHorizontally)) {
+            Text("Back to Login", color = Color.Gray)
+        }
+    }
+}
+
+@Composable
+fun VerifyEmailScreen(email: String) {
+    Column(modifier = Modifier.fillMaxSize().background(PaginexSpace).padding(24.dp), verticalArrangement = Arrangement.Center, horizontalAlignment = Alignment.CenterHorizontally) {
+        Icon(Icons.Default.Email, contentDescription = null, tint = PaginexNeonPurple, modifier = Modifier.size(80.dp))
+        Spacer(modifier = Modifier.height(24.dp))
+        Text("Check your email", fontSize = 24.sp, fontWeight = FontWeight.Bold, color = PaginexWhite)
+        Spacer(modifier = Modifier.height(16.dp))
+        Text(
+            "We sent a sign-in link to $email. Click the link in the email to complete your registration.",
+            textAlign = TextAlign.Center,
+            color = Color.Gray
+        )
     }
 }
 
