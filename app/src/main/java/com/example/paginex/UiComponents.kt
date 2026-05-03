@@ -33,6 +33,27 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
 
+// Utility function: converts an avatarUrl (which may be a regular URL or a Base64 data URI)
+// into a model that Coil's AsyncImage can display.
+@Composable
+fun avatarModel(url: String, placeholder: String = "https://via.placeholder.com/200"): Any {
+    if (url.isBlank()) return placeholder
+    
+    return remember(url) {
+        if (url.startsWith("data:image/")) {
+            try {
+                val base64Part = url.substringAfter("base64,")
+                val bytes = android.util.Base64.decode(base64Part, android.util.Base64.DEFAULT)
+                android.graphics.BitmapFactory.decodeByteArray(bytes, 0, bytes.size) ?: placeholder
+            } catch (e: Exception) {
+                placeholder
+            }
+        } else {
+            url
+        }
+    }
+}
+
 // --- COLORS & THEME STATE ---
 val LocalIsDarkTheme = compositionLocalOf { true }
 val LocalThemeToggle = staticCompositionLocalOf<() -> Unit> { {} }
@@ -282,7 +303,7 @@ fun BookPostCard(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 AsyncImage(
-                    model = postAuthor?.avatarUrl?.ifEmpty { "https://via.placeholder.com/200" } ?: "https://via.placeholder.com/200",
+                    model = avatarModel(postAuthor?.avatarUrl ?: ""),
                     contentDescription = null,
                     modifier = Modifier
                         .size(48.dp)

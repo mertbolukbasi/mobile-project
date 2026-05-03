@@ -11,7 +11,7 @@ object AuthService {
 
     fun getCurrentUser() = auth.currentUser
     fun isUserLoggedIn() = auth.currentUser != null
-    fun getUid() = auth.currentUser?.uid ?: "u1"
+    fun getUid() = auth.currentUser?.uid ?: ""
     fun getUserEmail() = auth.currentUser?.email ?: ""
 
     fun isEmailVerified(): Boolean {

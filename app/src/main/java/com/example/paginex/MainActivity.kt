@@ -8,6 +8,8 @@ import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.runtime.*
 
+import com.google.firebase.auth.FirebaseAuth
+
 class MainActivity : ComponentActivity() {
 
     @androidx.compose.foundation.ExperimentalFoundationApi
@@ -22,8 +24,22 @@ class MainActivity : ComponentActivity() {
             val context = androidx.compose.ui.platform.LocalContext.current
 
             val sharedPrefs = remember { context.getSharedPreferences("paginex_settings", android.content.Context.MODE_PRIVATE) }
-            var isDarkTheme by remember { 
-                mutableStateOf(sharedPrefs.getBoolean("is_dark_theme", true)) 
+            
+            var currentUserId by remember { mutableStateOf(AuthService.getUid()) }
+            
+            DisposableEffect(Unit) {
+                val authListener = FirebaseAuth.AuthStateListener { auth ->
+                    currentUserId = auth.currentUser?.uid ?: ""
+                }
+                FirebaseAuth.getInstance().addAuthStateListener(authListener)
+                onDispose {
+                    FirebaseAuth.getInstance().removeAuthStateListener(authListener)
+                }
+            }
+
+            val themeKey = if (currentUserId.isNotEmpty()) "is_dark_theme_$currentUserId" else "is_dark_theme"
+            var isDarkTheme by remember(currentUserId) { 
+                mutableStateOf(sharedPrefs.getBoolean(themeKey, true)) 
             }
             
             LaunchedEffect(Unit) {
@@ -35,7 +51,7 @@ class MainActivity : ComponentActivity() {
                 LocalThemeToggle provides { 
                     val newTheme = !isDarkTheme
                     isDarkTheme = newTheme
-                    sharedPrefs.edit().putBoolean("is_dark_theme", newTheme).apply()
+                    sharedPrefs.edit().putBoolean(themeKey, newTheme).apply()
                 },
                 androidx.compose.foundation.LocalOverscrollConfiguration provides null
             ) {

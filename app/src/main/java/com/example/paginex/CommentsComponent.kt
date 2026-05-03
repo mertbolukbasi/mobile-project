@@ -46,6 +46,7 @@ fun CommentsSheet(
 
     // Likes cache
     val likeCounts = remember { mutableStateMapOf<String, Int>() }
+    val currentUserId = AuthService.getUid()
     val isLikedByUser = remember { mutableStateMapOf<String, Boolean>() }
 
     LaunchedEffect(tableId) {
@@ -62,7 +63,7 @@ fun CommentsSheet(
         // Fetch likes for all comments
         fetchedComments.forEach { comment ->
             likeCounts[comment.id] = FirestoreService.getLikeCount(comment.id)
-            isLikedByUser[comment.id] = FirestoreService.isLikedByUser(comment.id, "u1")
+            isLikedByUser[comment.id] = FirestoreService.isLikedByUser(comment.id, currentUserId)
         }
     }
 
@@ -136,7 +137,8 @@ fun CommentsSheet(
                                 likeCounts[comment.id] = if (currentLiked) currentCount - 1 else currentCount + 1
                                 
                                 scope.launch {
-                                    FirestoreService.toggleCommentLike(comment.id, "u1")
+                                    FirestoreService.toggleCommentLike(comment.id, currentUserId, !currentLiked)
+                                    isLikedByUser[comment.id] = !(isLikedByUser[comment.id] ?: false)
                                 }
                             }
                         )
@@ -213,9 +215,10 @@ fun CommentsSheet(
                         IconButton(
                             onClick = {
                                 if (commentText.isNotBlank()) {
-                                    val newComment = FireComment(
+                                    val currentUserId = AuthService.getUid()
+                                    val commentObj = FireComment(
                                         id = "c_${System.currentTimeMillis()}",
-                                        userId = "u1",
+                                        userId = currentUserId,
                                         comment = commentText,
                                         tableId = tableId,
                                         parentId = replyingTo?.id,
@@ -223,9 +226,9 @@ fun CommentsSheet(
                                         updatedAt = com.google.firebase.Timestamp.now()
                                     )
                                     // Add to local cache
-                                    comments.add(newComment)
-                                    likeCounts[newComment.id] = 0
-                                    isLikedByUser[newComment.id] = false
+                                    comments.add(commentObj)
+                                    likeCounts[commentObj.id] = 0
+                                    isLikedByUser[commentObj.id] = false
                                     
                                     commentText = ""
                                     replyingTo = null
@@ -233,9 +236,9 @@ fun CommentsSheet(
                                     onCommentAdded()
                                     
                                     scope.launch {
-                                        FirestoreService.addComment(newComment)
-                                        if (!userCache.containsKey("u1")) {
-                                            userCache["u1"] = FirestoreService.getUserById("u1")
+                                        FirestoreService.addComment(commentObj)
+                                        if (!userCache.containsKey(currentUserId)) {
+                                            userCache[currentUserId] = FirestoreService.getUserById(currentUserId)
                                         }
                                     }
                                 }
@@ -285,7 +288,7 @@ fun CommentItem(
             .padding(start = if (isReply) 48.dp else 0.dp)
     ) {
         AsyncImage(
-            model = avatarUrl.ifEmpty { "https://via.placeholder.com/200" },
+            model = avatarModel(avatarUrl),
             contentDescription = null,
             modifier = Modifier
                 .size(if (isReply) 28.dp else 36.dp)

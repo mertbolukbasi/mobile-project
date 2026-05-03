@@ -27,7 +27,7 @@ object FirestoreService {
                 val collectionsToClear = listOf("books", "users", "posts", "booklists", "booklist_books", "favourite_books", "reading_statuses", "explore_images", "follows", "likes", "saves", "comments")
                 collectionsToClear.forEach { col ->
                     val docs = db.collection(col).get().await()
-                    docs.forEach { it.reference.delete() } // Wait not needed for bulk deletes, but keep it simple
+                    docs.forEach { it.reference.delete() }
                 }
             }
 
@@ -178,122 +178,6 @@ object FirestoreService {
             )
             seedBooks.forEach { db.collection("books").document(it.id).set(it).await() }
 
-            // 2. Users
-            val seedUsers = listOf(
-                FireUser(id = "u1", username = "ayseyilmaz", name = "Ayşe", surname = "Yılmaz",
-                    email = "ayse@example.com",
-                    bio = "Kitap okumayı ve yeni dünyalar keşfetmeyi seviyorum. 📚 Fantastik ve distopya türlerinin hayranıyım.",
-                    avatarUrl = "https://images.unsplash.com/photo-1494790108377-be9c29b29330?auto=format&fit=crop&q=80&w=200",
-                    location = "İstanbul, Türkiye"),
-                FireUser(id = "u2", username = "mehmet_okur", name = "Mehmet", surname = "Okur",
-                    email = "mehmet@example.com",
-                    bio = "Tarih ve felsefe meraklısı. Her kitap yeni bir ufuk.",
-                    avatarUrl = "https://images.unsplash.com/photo-1500648767791-00dcc994a43e?auto=format&fit=crop&q=80&w=200",
-                    location = "Ankara, Türkiye"),
-                FireUser(id = "u3", username = "canan_dag", name = "Canan", surname = "Dağ",
-                    email = "canan@example.com",
-                    bio = "Klasik edebiyat tutkunu. Dostoyevski ve Tolstoy benim kahramanlarım.",
-                    avatarUrl = "https://images.unsplash.com/photo-1438761681033-6461ffad8d80?auto=format&fit=crop&q=80&w=200",
-                    location = "İzmir, Türkiye"),
-                FireUser(id = "u4", username = "elif_kitap", name = "Elif", surname = "Kaya",
-                    email = "elif@example.com",
-                    bio = "Fantastik dünyaların gezgini. Hogwarts mektubu hâlâ gelmedi ama umut var! ✨",
-                    avatarUrl = "https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&q=80&w=200",
-                    location = "Bursa, Türkiye")
-            )
-            seedUsers.forEach { db.collection("users").document(it.id).set(it).await() }
-
-            // 3. Posts
-            val now = System.currentTimeMillis()
-            val seedPosts = listOf(
-                hashMapOf(
-                    "id" to "p1", "userId" to "u1", "bookId" to "b1",
-                    "description" to "A brilliant dystopian classic. The world Orwell created feels startlingly similar to today's reality. The society under Big Brother's surveillance serves as a stark warning.",
-                    "rating" to 10.0, "status" to "Read",
-                    "createdAt" to Timestamp(Date(now - 5L * 24 * 60 * 60 * 1000)),
-                    "updatedAt" to Timestamp.now()
-                ),
-                hashMapOf(
-                    "id" to "p2", "userId" to "u2", "bookId" to "b2",
-                    "description" to "This book fundamentally changed my perspective on human history. Harari presents complex topics in an incredibly accessible way.",
-                    "rating" to 9.0, "status" to "Reading",
-                    "createdAt" to Timestamp(Date(now - 40L * 24 * 60 * 60 * 1000)),
-                    "updatedAt" to Timestamp.now()
-                ),
-                hashMapOf(
-                    "id" to "p3", "userId" to "u3", "bookId" to "b3",
-                    "description" to "Taking a little break right now, but I will definitely return to it. Hidden in every page of The Little Prince are deep profound messages about life.",
-                    "rating" to 8.0, "status" to "On Hold",
-                    "createdAt" to Timestamp(Date(now - 10L * 24 * 60 * 60 * 1000)),
-                    "updatedAt" to Timestamp.now()
-                ),
-                hashMapOf(
-                    "id" to "p4", "userId" to "u1", "bookId" to "b4",
-                    "description" to "Just stepped into the Dune universe and I'm already fascinated. A true masterpiece for sci-fi lovers.",
-                    "rating" to 0.0, "status" to "Reading",
-                    "createdAt" to Timestamp(Date(now - 2L * 24 * 60 * 60 * 1000)),
-                    "updatedAt" to Timestamp.now()
-                ),
-                hashMapOf(
-                    "id" to "p5", "userId" to "u4", "bookId" to "b6",
-                    "description" to "A book that revives the best memories of my childhood. I highly recommend it to readers of all ages.",
-                    "rating" to 10.0, "status" to "Read",
-                    "createdAt" to Timestamp(Date(now - 60L * 24 * 60 * 60 * 1000)),
-                    "updatedAt" to Timestamp.now()
-                )
-            )
-            seedPosts.forEach { db.collection("posts").document(it["id"] as String).set(it).await() }
-            // 4. Booklists
-            val seedLists = listOf(
-                FireBookList(id = "bl1", name = "My Favorite Dystopias", description = "Dark future stories", userId = "u1"),
-                FireBookList(id = "bl2", name = "To Read List", description = "Up next...", userId = "u1"),
-                FireBookList(id = "bl3", name = "Classic Works", description = "Timeless books", userId = "u1"),
-                FireBookList(id = "bl4", name = "History Buff", description = "Best history books", userId = "u2"),
-                FireBookList(id = "bl5", name = "Fantasy Escapes", description = "Magical realms", userId = "u3")
-            )
-            seedLists.forEach { db.collection("booklists").document(it.id).set(it).await() }
-
-            // 5. Booklist-Book junctions
-            val junctions = listOf(
-                "bl1" to "b1", "bl1" to "b7",
-                "bl2" to "b4", "bl2" to "b5", "bl2" to "b8",
-                "bl3" to "b3", "bl3" to "b5",
-                "bl4" to "b2", "bl4" to "b11",
-                "bl5" to "b6", "bl5" to "b10", "bl5" to "b14"
-            )
-            junctions.forEach { (listId, bookId) ->
-                val junctionId = "${listId}_${bookId}"
-                db.collection("booklist_books").document(junctionId).set(
-                    FireBookListBook(id = junctionId, booklistId = listId, bookId = bookId)
-                ).await()
-            }
-
-            // Add reading statuses for u2 and u3 to satisfy the rule
-            val u2u3ReadingStatuses = listOf(
-                FireReadingStatus(id = "rs_u2_1", userId = "u2", bookId = "b2", status = "Completed"),
-                FireReadingStatus(id = "rs_u2_2", userId = "u2", bookId = "b11", status = "Completed"),
-                FireReadingStatus(id = "rs_u3_1", userId = "u3", bookId = "b6", status = "Completed"),
-                FireReadingStatus(id = "rs_u3_2", userId = "u3", bookId = "b10", status = "Completed"),
-                FireReadingStatus(id = "rs_u3_3", userId = "u3", bookId = "b14", status = "Completed")
-            )
-            u2u3ReadingStatuses.forEach { db.collection("reading_statuses").document(it.id).set(it).await() }
-
-            // 6. FavouriteBooks
-            db.collection("favourite_books").document("fav1").set(
-                FireFavouriteBooks(id = "fav1", userId = "u1", bookIds = listOf("b1", "b2", "b3"))
-            ).await()
-
-            // 7. ReadingStatus
-            val readingStatuses = listOf(
-                FireReadingStatus(id = "rs1", userId = "u1", bookId = "b1", status = "Completed"),
-                FireReadingStatus(id = "rs2", userId = "u1", bookId = "b3", status = "To Read"),
-                FireReadingStatus(id = "rs3", userId = "u1", bookId = "b4", status = "Reading"),
-                FireReadingStatus(id = "rs4", userId = "u1", bookId = "b5", status = "Reading"),
-                FireReadingStatus(id = "rs5", userId = "u1", bookId = "b7", status = "To Read"),
-                FireReadingStatus(id = "rs6", userId = "u1", bookId = "b8", status = "Completed")
-            )
-            readingStatuses.forEach { db.collection("reading_statuses").document(it.id).set(it).await() }
-
             // 8. Explore Images
             val exploreUrls = listOf(
                 "https://images.unsplash.com/photo-1544716278-ca5e3f4abd8c?auto=format&fit=crop&q=80&w=400",
@@ -314,17 +198,6 @@ object FirestoreService {
                     FireImage(id = "exp_$index", path = url, tableId = "explore")
                 ).await()
             }
-
-            // 9. Follow relationships
-            val follows = listOf(
-                FireFollow(id = "f1", followerId = "u1", followingId = "u2"),
-                FireFollow(id = "f2", followerId = "u1", followingId = "u3"),
-                FireFollow(id = "f3", followerId = "u2", followingId = "u1"),
-                FireFollow(id = "f4", followerId = "u3", followingId = "u1"),
-                FireFollow(id = "f6", followerId = "u2", followingId = "u4")
-            )
-            follows.forEach { db.collection("follows").document(it.id).set(it).await() }
-
             Log.d(TAG, "Full seed initialization complete!")
         } catch (e: Exception) {
             Log.e(TAG, "Error during seed initialization", e)
@@ -620,23 +493,14 @@ object FirestoreService {
         }
     }
 
-    suspend fun toggleCommentLike(commentId: String, userId: String): Boolean {
+    suspend fun toggleCommentLike(commentId: String, userId: String, isLiked: Boolean): Boolean {
         return try {
-            val likeRef = db.collection("likes")
-                .whereEqualTo("userId", userId)
-                .whereEqualTo("tableId", commentId)
-                .get().await()
-
-            if (likeRef.isEmpty) {
-                val newLike = FireLike(
-                    id = "c_like_${userId}_${commentId}",
-                    userId = userId,
-                    tableId = commentId,
-                    createdAt = Timestamp.now()
-                )
-                db.collection("likes").document(newLike.id).set(newLike).await()
+            val likeId = "c_like_${userId}_${commentId}"
+            if (isLiked) {
+                val newLike = FireLike(id = likeId, userId = userId, tableId = commentId, createdAt = Timestamp.now())
+                db.collection("likes").document(likeId).set(newLike).await()
             } else {
-                db.collection("likes").document(likeRef.documents[0].id).delete().await()
+                db.collection("likes").document(likeId).delete().await()
             }
             true
         } catch (e: Exception) {
@@ -670,23 +534,14 @@ object FirestoreService {
     // WRITE OPERATIONS
     // ========================
 
-    suspend fun toggleLike(postId: String, userId: String): Boolean {
+    suspend fun toggleLike(postId: String, userId: String, isLiked: Boolean): Boolean {
         return try {
-            val likeRef = db.collection("likes")
-                .whereEqualTo("userId", userId)
-                .whereEqualTo("tableId", postId)
-                .get().await()
-
-            if (likeRef.isEmpty) {
-                val newLike = FireLike(
-                    id = "${userId}_${postId}",
-                    userId = userId,
-                    tableId = postId,
-                    createdAt = Timestamp.now()
-                )
-                db.collection("likes").document(newLike.id).set(newLike).await()
+            val likeId = "${userId}_${postId}"
+            if (isLiked) {
+                val newLike = FireLike(id = likeId, userId = userId, tableId = postId, createdAt = Timestamp.now())
+                db.collection("likes").document(likeId).set(newLike).await()
             } else {
-                db.collection("likes").document(likeRef.documents[0].id).delete().await()
+                db.collection("likes").document(likeId).delete().await()
             }
             true
         } catch (e: Exception) {
@@ -695,23 +550,14 @@ object FirestoreService {
         }
     }
 
-    suspend fun toggleSave(postId: String, userId: String): Boolean {
+    suspend fun toggleSave(postId: String, userId: String, isSaved: Boolean): Boolean {
         return try {
-            val saveRef = db.collection("saves")
-                .whereEqualTo("userId", userId)
-                .whereEqualTo("tableId", postId)
-                .get().await()
-
-            if (saveRef.isEmpty) {
-                val newSave = FireSave(
-                    id = "post_save_${userId}_${postId}",
-                    userId = userId,
-                    tableId = postId,
-                    createdAt = Timestamp.now()
-                )
-                db.collection("saves").document(newSave.id).set(newSave).await()
+            val saveId = "post_save_${userId}_${postId}"
+            if (isSaved) {
+                val newSave = FireSave(id = saveId, userId = userId, tableId = postId, createdAt = Timestamp.now())
+                db.collection("saves").document(saveId).set(newSave).await()
             } else {
-                db.collection("saves").document(saveRef.documents[0].id).delete().await()
+                db.collection("saves").document(saveId).delete().await()
             }
             true
         } catch (e: Exception) {
@@ -720,23 +566,14 @@ object FirestoreService {
         }
     }
 
-    suspend fun toggleBookListLike(listId: String, userId: String): Boolean {
+    suspend fun toggleBookListLike(listId: String, userId: String, isLiked: Boolean): Boolean {
         return try {
-            val likeRef = db.collection("likes")
-                .whereEqualTo("userId", userId)
-                .whereEqualTo("tableId", listId)
-                .get().await()
-
-            if (likeRef.isEmpty) {
-                val newLike = FireLike(
-                    id = "bl_like_${userId}_${listId}",
-                    userId = userId,
-                    tableId = listId,
-                    createdAt = Timestamp.now()
-                )
-                db.collection("likes").document(newLike.id).set(newLike).await()
+            val likeId = "bl_like_${userId}_${listId}"
+            if (isLiked) {
+                val newLike = FireLike(id = likeId, userId = userId, tableId = listId, createdAt = Timestamp.now())
+                db.collection("likes").document(likeId).set(newLike).await()
             } else {
-                db.collection("likes").document(likeRef.documents[0].id).delete().await()
+                db.collection("likes").document(likeId).delete().await()
             }
             true
         } catch (e: Exception) {
@@ -745,23 +582,14 @@ object FirestoreService {
         }
     }
 
-    suspend fun toggleBookSave(bookId: String, userId: String): Boolean {
+    suspend fun toggleBookSave(bookId: String, userId: String, isSaved: Boolean): Boolean {
         return try {
-            val saveRef = db.collection("saves")
-                .whereEqualTo("userId", userId)
-                .whereEqualTo("tableId", bookId)
-                .get().await()
-
-            if (saveRef.isEmpty) {
-                val newSave = FireSave(
-                    id = "save_${userId}_${bookId}",
-                    userId = userId,
-                    tableId = bookId,
-                    createdAt = Timestamp.now()
-                )
-                db.collection("saves").document(newSave.id).set(newSave).await()
+            val saveId = "save_${userId}_${bookId}"
+            if (isSaved) {
+                val newSave = FireSave(id = saveId, userId = userId, tableId = bookId, createdAt = Timestamp.now())
+                db.collection("saves").document(saveId).set(newSave).await()
             } else {
-                db.collection("saves").document(saveRef.documents[0].id).delete().await()
+                db.collection("saves").document(saveId).delete().await()
             }
             true
         } catch (e: Exception) {
@@ -770,23 +598,14 @@ object FirestoreService {
         }
     }
 
-    suspend fun toggleBookListSave(listId: String, userId: String): Boolean {
+    suspend fun toggleBookListSave(listId: String, userId: String, isSaved: Boolean): Boolean {
         return try {
-            val saveRef = db.collection("saves")
-                .whereEqualTo("userId", userId)
-                .whereEqualTo("tableId", listId)
-                .get().await()
-
-            if (saveRef.isEmpty) {
-                val newSave = FireSave(
-                    id = "bl_save_${userId}_${listId}",
-                    userId = userId,
-                    tableId = listId,
-                    createdAt = Timestamp.now()
-                )
-                db.collection("saves").document(newSave.id).set(newSave).await()
+            val saveId = "bl_save_${userId}_${listId}"
+            if (isSaved) {
+                val newSave = FireSave(id = saveId, userId = userId, tableId = listId, createdAt = Timestamp.now())
+                db.collection("saves").document(saveId).set(newSave).await()
             } else {
-                db.collection("saves").document(saveRef.documents[0].id).delete().await()
+                db.collection("saves").document(saveId).delete().await()
             }
             true
         } catch (e: Exception) {
@@ -916,15 +735,55 @@ object FirestoreService {
         }
     }
 
-    suspend fun uploadProfileImage(userId: String, imageUri: android.net.Uri): String? {
+    suspend fun uploadProfileImage(userId: String, imageUri: android.net.Uri, context: android.content.Context): String? {
         return try {
-            val storageRef = com.google.firebase.storage.FirebaseStorage.getInstance()
-                .reference.child("avatars/$userId.jpg")
-            storageRef.putFile(imageUri).await()
-            val downloadUrl = storageRef.downloadUrl.await().toString()
-            // Update user's avatarUrl in Firestore
-            db.collection("users").document(userId).update("avatarUrl", downloadUrl, "updatedAt", Timestamp.now()).await()
-            downloadUrl
+            kotlinx.coroutines.withContext(kotlinx.coroutines.NonCancellable) {
+                // Read bytes from the content URI
+                val inputStream = context.contentResolver.openInputStream(imageUri)
+                    ?: throw Exception("Cannot open input stream for URI: $imageUri")
+                val originalBytes = inputStream.readBytes()
+                inputStream.close()
+                
+                Log.d(TAG, "uploadProfileImage: read ${originalBytes.size} bytes for user $userId")
+                
+                // Compress the image to a reasonable size for profile photo
+                val bitmap = android.graphics.BitmapFactory.decodeByteArray(originalBytes, 0, originalBytes.size)
+                    ?: throw Exception("Cannot decode image bytes")
+                val maxDim = 300
+                val scale = minOf(maxDim.toFloat() / bitmap.width, maxDim.toFloat() / bitmap.height, 1f)
+                val scaledBitmap = if (scale < 1f) {
+                    android.graphics.Bitmap.createScaledBitmap(bitmap, (bitmap.width * scale).toInt(), (bitmap.height * scale).toInt(), true)
+                } else bitmap
+                
+                val compressedStream = java.io.ByteArrayOutputStream()
+                scaledBitmap.compress(android.graphics.Bitmap.CompressFormat.JPEG, 70, compressedStream)
+                val compressedBytes = compressedStream.toByteArray()
+                Log.d(TAG, "uploadProfileImage: compressed to ${compressedBytes.size} bytes")
+                
+                // Try Firebase Storage first
+                var downloadUrl: String? = null
+                try {
+                    val storageRef = com.google.firebase.storage.FirebaseStorage.getInstance()
+                        .reference.child("avatars/$userId.jpg")
+                    storageRef.putBytes(compressedBytes).await()
+                    downloadUrl = storageRef.downloadUrl.await().toString()
+                    Log.d(TAG, "uploadProfileImage: Storage upload success, URL = $downloadUrl")
+                } catch (storageError: Exception) {
+                    Log.w(TAG, "Firebase Storage upload failed, falling back to Base64 data URI", storageError)
+                }
+                
+                // If Storage failed, use Base64 data URI as fallback
+                if (downloadUrl == null) {
+                    val base64 = android.util.Base64.encodeToString(compressedBytes, android.util.Base64.NO_WRAP)
+                    downloadUrl = "data:image/jpeg;base64,$base64"
+                    Log.d(TAG, "uploadProfileImage: using Base64 data URI (${downloadUrl.length} chars)")
+                }
+                
+                // Update user's avatarUrl in Firestore
+                db.collection("users").document(userId).update("avatarUrl", downloadUrl, "updatedAt", Timestamp.now()).await()
+                Log.d(TAG, "uploadProfileImage: Firestore updated for user $userId")
+                downloadUrl
+            }
         } catch (e: Exception) {
             Log.e(TAG, "Error uploading profile image", e)
             null
@@ -1176,7 +1035,6 @@ object FirestoreService {
                 val fireLists = fireListsEarly
                 
                 // Optimization: fetch likes and saves for current user
-                val currentUserId = "u1"
                 val userLikesSnap = db.collection("likes").whereEqualTo("userId", currentUserId).get().await()
                 val userLikedIds = userLikesSnap.documents.mapNotNull { it.getString("tableId") }.toSet()
                 

@@ -256,7 +256,7 @@ fun PaginexApp() {
                     onNavigateToDetail = { postId -> navController.navigate("detail/$postId") },
                     onNavigateToEdit = { postId -> navController.navigate("create-post?postId=$postId") },
                     onNavigateToUser = { userId -> 
-                        if (userId == "u1" || userId == MockData.currentUser.id) navController.navigate(Screen.Profile.route)
+                        if (userId == AuthService.getUid()) navController.navigate(Screen.Profile.route)
                         else {
                             navController.navigate(Screen.PublicProfile.createRoute(userId))
                         }
@@ -284,8 +284,8 @@ fun PaginexApp() {
             composable(Screen.Saved.route) { SavedPostsScreen(onBookClick = { postId -> navController.navigate("detail/$postId") }) }
             composable(Screen.Profile.route) { PaginexProfileScreen(
                 onEditClick = { navController.navigate(Screen.Settings.route) },
-                onListsClick = { navController.navigate("book_lists/${MockData.currentUser.id.ifEmpty { "u1" }}") },
-                onConstellationClick = { navController.navigate("constellation/${MockData.currentUser.id.ifEmpty { "u1" }}") },
+                onListsClick = { navController.navigate("book_lists/${AuthService.getUid()}") },
+                onConstellationClick = { navController.navigate("constellation/${AuthService.getUid()}") },
                 onBookClick = { postId -> navController.navigate("detail/$postId?ownerOnly=true") },
                 onLogoutClick = { navController.navigate(Screen.Login.route) { popUpTo(0) } }
             ) }
@@ -294,7 +294,7 @@ fun PaginexApp() {
                 route = "book_lists/{userId}",
                 arguments = listOf(navArgument("userId") { type = NavType.StringType })
             ) { backStackEntry -> 
-                val userId = backStackEntry.arguments?.getString("userId") ?: MockData.currentUser.id.ifEmpty { "u1" }
+                val userId = backStackEntry.arguments?.getString("userId") ?: AuthService.getUid()
                 BookListsScreen(targetUserId = userId) { navController.popBackStack() } 
             }
             composable(Screen.Drafts.route) { DraftsScreen { navController.popBackStack() } }
@@ -302,7 +302,7 @@ fun PaginexApp() {
                 route = "constellation/{userId}",
                 arguments = listOf(navArgument("userId") { type = NavType.StringType })
             ) { backStackEntry -> 
-                val userId = backStackEntry.arguments?.getString("userId") ?: MockData.currentUser.id.ifEmpty { "u1" }
+                val userId = backStackEntry.arguments?.getString("userId") ?: AuthService.getUid()
                 ConstellationScreen(
                     targetUserId = userId,
                     onBack = { navController.popBackStack() },
@@ -354,7 +354,7 @@ fun EditFavoritesSheet(
 ) {
     val selected = remember { mutableStateListOf<String>().apply { addAll(currentFavorites) } }
     val allBooks = remember(MockData.readingStatuses.size) {
-        val currentUid = MockData.currentUser.id.ifEmpty { "u1" }
+        val currentUid = AuthService.getUid()
         MockData.readingStatuses.filter { it.userId == currentUid }.map { it.book }.distinctBy { it.id }
     }
     var searchQuery by remember { mutableStateOf("") }
@@ -460,7 +460,7 @@ fun UserGalaxy(
                 .border(2.5.dp, Color(0xFFFFD700), CircleShape)
         ) {
             AsyncImage(
-                model = user.avatarUrl.ifEmpty { "https://via.placeholder.com/200" },
+                model = avatarModel(user.avatarUrl),
                 contentDescription = user.fullName,
                 modifier = Modifier.fillMaxSize(),
                 contentScale = ContentScale.Crop
@@ -759,6 +759,7 @@ fun RegisterScreen(onRegistered: () -> Unit, onBackToLogin: () -> Unit) {
 fun ProfileSetupScreen(onSetupComplete: () -> Unit) {
     val user = MockData.currentUser
     val userEmail = AuthService.getUserEmail()
+    val context = androidx.compose.ui.platform.LocalContext.current
     
     var name by remember { mutableStateOf("") }
     var surname by remember { mutableStateOf("") }
@@ -826,26 +827,31 @@ fun ProfileSetupScreen(onSetupComplete: () -> Unit) {
                 onClick = {
                     if (name.isBlank() || username.isBlank() || isLoading) return@Button
                     isLoading = true
+                    val actualUid = AuthService.getUid()
                     scope.launch {
-                        var newAvatarUrl = ""
-                        if (avatarUri != null) {
-                            val uploadedUrl = FirestoreService.uploadProfileImage(user.id, avatarUri!!)
-                            if (uploadedUrl != null) newAvatarUrl = uploadedUrl
+                        kotlinx.coroutines.withContext(kotlinx.coroutines.NonCancellable) {
+                            var newAvatarUrl = ""
+                            if (avatarUri != null) {
+                                val uploadedUrl = FirestoreService.uploadProfileImage(actualUid, avatarUri!!, context)
+                                if (uploadedUrl != null) newAvatarUrl = uploadedUrl
+                            }
+                            
+                            val updates = mutableMapOf<String, Any>(
+                                "name" to name,
+                                "surname" to surname,
+                                "username" to username
+                            )
+                            if (newAvatarUrl.isNotEmpty()) {
+                                updates["avatarUrl"] = newAvatarUrl
+                            }
+                            val success = FirestoreService.updateUserProfile(actualUid, updates)
+                            
+                            if (success) {
+                                FirestoreService.syncMockData()
+                                onSetupComplete()
+                            }
+                            isLoading = false
                         }
-                        
-                        val updates = mapOf(
-                            "name" to name,
-                            "surname" to surname,
-                            "username" to username,
-                            "avatarUrl" to newAvatarUrl
-                        )
-                        val success = FirestoreService.updateUserProfile(user.id, updates)
-                        
-                        if (success) {
-                            FirestoreService.syncMockData()
-                            onSetupComplete()
-                        }
-                        isLoading = false
                     }
                 }, 
                 modifier = Modifier.fillMaxWidth().height(56.dp),
@@ -1126,9 +1132,9 @@ fun PaginexHomeScreen(
                             onLikeClick = {
                                 // Update local cache immediately
                                 val index = MockData.feedPosts.indexOfFirst { it.id == post.id }
+                                val newIsLiked = if (index != -1) !MockData.feedPosts[index].isLiked else !post.isLiked
                                 if (index != -1) {
                                     val currentPost = MockData.feedPosts[index]
-                                    val newIsLiked = !currentPost.isLiked
                                     val newLikesCount = if (newIsLiked) currentPost.likesCount + 1 else (currentPost.likesCount - 1).coerceAtLeast(0)
                                     MockData.feedPosts[index] = currentPost.copy(
                                         isLiked = newIsLiked,
@@ -1137,21 +1143,22 @@ fun PaginexHomeScreen(
                                 }
                                 // Write to Firestore in GlobalScope
                                 kotlinx.coroutines.MainScope().launch {
-                                    FirestoreService.toggleLike(post.id, "u1")
+                                    FirestoreService.toggleLike(post.id, AuthService.getUid(), newIsLiked)
                                 }
                             },
                             onSaveClick = {
                                 // Update local cache immediately
                                 val index = MockData.feedPosts.indexOfFirst { it.id == post.id }
+                                val newIsSaved = if (index != -1) !MockData.feedPosts[index].isSaved else !post.isSaved
                                 if (index != -1) {
                                     val currentPost = MockData.feedPosts[index]
                                     MockData.feedPosts[index] = currentPost.copy(
-                                        isSaved = !currentPost.isSaved
+                                        isSaved = newIsSaved
                                     )
                                 }
                                 // Write to Firestore in GlobalScope
                                 kotlinx.coroutines.MainScope().launch {
-                                    FirestoreService.toggleSave(post.id, "u1")
+                                    FirestoreService.toggleSave(post.id, AuthService.getUid(), newIsSaved)
                                 }
                             },
                             onCommentAdded = {
@@ -1237,7 +1244,8 @@ fun ExploreScreen(onBookClick: (String) -> Unit = {}) {
                 OutlinedTextField(
                     value = searchQuery,
                     onValueChange = { searchQuery = it },
-                    modifier = Modifier.fillMaxWidth().height(48.dp),
+                    modifier = Modifier.fillMaxWidth(),
+                    singleLine = true,
                     placeholder = { Text("Search in stardust...", color = Color.Gray, fontSize = 14.sp) },
                     leadingIcon = { Icon(Icons.Default.Search, null, tint = PaginexWhite.copy(alpha = 0.5f), modifier = Modifier.size(20.dp)) },
                     shape = RoundedCornerShape(12.dp),
@@ -1245,7 +1253,9 @@ fun ExploreScreen(onBookClick: (String) -> Unit = {}) {
                         unfocusedContainerColor = PaginexGlass,
                         focusedContainerColor = PaginexGlass,
                         unfocusedBorderColor = PaginexGlassBorder,
-                        focusedBorderColor = PaginexNeonTeal
+                        focusedBorderColor = PaginexNeonTeal,
+                        focusedTextColor = PaginexWhite,
+                        unfocusedTextColor = PaginexWhite
                     )
                 )
             }
@@ -1315,8 +1325,7 @@ fun ExploreScreen(onBookClick: (String) -> Unit = {}) {
                         .background(PaginexGlass)
                         .border(1.dp, PaginexGlassBorder, RoundedCornerShape(24.dp))
                         .clickable { 
-                            val post = MockData.feedPosts.find { it.book.title == book.title && !it.isBooklistPost }
-                            post?.let { onBookClick(it.id) }
+                            onBookClick(book.id)
                         }
                 ) {
                     AsyncImage(
@@ -1375,7 +1384,7 @@ fun ExploreScreen(onBookClick: (String) -> Unit = {}) {
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         AsyncImage(
-                            model = user.avatarUrl.ifEmpty { "https://via.placeholder.com/150" },
+                            model = avatarModel(user.avatarUrl, "https://via.placeholder.com/150"),
                             contentDescription = null,
                             modifier = Modifier.size(50.dp).clip(CircleShape).border(2.dp, PaginexNeonPurple, CircleShape),
                             contentScale = ContentScale.Crop
@@ -1412,7 +1421,7 @@ fun BookDetailScreen(postId: String?, ownerOnly: Boolean = false, onBack: () -> 
         ?: return
     val book = initialPost.book
     val bookReviews = MockData.feedPosts.filter { 
-        it.book.id == book.id && (!ownerOnly || it.userId == "u1")
+        it.book.id == book.id && (!ownerOnly || it.userId == AuthService.getUid())
     }
     val avgRating = if (bookReviews.isNotEmpty()) bookReviews.filter { it.rating > 0f }.map { it.rating }.average().let { if (it.isNaN()) 0f else it.toFloat() } else 0f
 
@@ -1473,7 +1482,7 @@ fun BookDetailScreen(postId: String?, ownerOnly: Boolean = false, onBack: () -> 
                 IconButton(onClick = {
                     if (bookIdx != -1) {
                         MockData.sampleBooks[bookIdx] = MockData.sampleBooks[bookIdx].copy(isSaved = !isBookSaved)
-                        saveScope.launch { FirestoreService.toggleBookSave(book.id, "u1") }
+                        saveScope.launch { FirestoreService.toggleBookSave(book.id, AuthService.getUid(), !book.isSaved) }
                     }
                 }) {
                     Icon(
@@ -1513,7 +1522,7 @@ fun BookDetailScreen(postId: String?, ownerOnly: Boolean = false, onBack: () -> 
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             val reviewer = reviewerCache[reviewPost.userId]
                             AsyncImage(
-                                model = reviewer?.avatarUrl?.ifEmpty { "https://via.placeholder.com/200" } ?: "https://via.placeholder.com/200", 
+                                model = avatarModel(reviewer?.avatarUrl ?: ""), 
                                 contentDescription = null,
                                 modifier = Modifier.size(32.dp).clip(CircleShape),
                                 contentScale = ContentScale.Crop
@@ -1557,7 +1566,7 @@ fun BookDetailScreen(postId: String?, ownerOnly: Boolean = false, onBack: () -> 
                         Box(modifier = Modifier.width(280.dp).padding(end = 4.dp)) {
                             BookListCard(
                                 bookList = list,
-                                isOwner = list.userId == MockData.currentUser.id.ifEmpty { "u1" },
+                                isOwner = list.userId == AuthService.getUid(),
                                 onListClick = { selectedListForDetails = list },
                                 onAddBook = {},
                                 onLikeClick = {
@@ -1570,17 +1579,18 @@ fun BookDetailScreen(postId: String?, ownerOnly: Boolean = false, onBack: () -> 
                                             likesCount = if (newIsLiked) current.likesCount + 1 else (current.likesCount - 1).coerceAtLeast(0)
                                         )
                                         kotlinx.coroutines.MainScope().launch {
-                                            FirestoreService.toggleBookListLike(list.id, "u1")
+                                            FirestoreService.toggleBookListLike(list.id, AuthService.getUid(), newIsLiked)
                                         }
                                     }
                                 },
                                 onSaveClick = {
                                     val idx = MockData.sampleBookLists.indexOfFirst { it.id == list.id }
+                                    val newIsSaved = if (idx != -1) !MockData.sampleBookLists[idx].isSaved else !list.isSaved
                                     if (idx != -1) {
                                         val current = MockData.sampleBookLists[idx]
-                                        MockData.sampleBookLists[idx] = current.copy(isSaved = !current.isSaved)
+                                        MockData.sampleBookLists[idx] = current.copy(isSaved = newIsSaved)
                                         kotlinx.coroutines.MainScope().launch {
-                                            FirestoreService.toggleBookListSave(list.id, "u1")
+                                            FirestoreService.toggleBookListSave(list.id, AuthService.getUid(), newIsSaved)
                                         }
                                     }
                                 }
@@ -1623,7 +1633,7 @@ fun PaginexProfileScreen(
     )
     var showAddBookDialog by remember { mutableStateOf(false) }
     var showLogoutDialog by remember { mutableStateOf(false) }
-    val currentlyReading = MockData.readingStatuses.filter { it.status == "Reading" && it.userId == (MockData.currentUser.id.ifEmpty { "u1" }) }
+    val currentlyReading = MockData.readingStatuses.filter { it.status == "Reading" && it.userId == (AuthService.getUid()) }
     val scope = rememberCoroutineScope()
 
     androidx.activity.compose.BackHandler(enabled = true) {
@@ -1698,7 +1708,7 @@ fun PaginexProfileScreen(
                         showFavoritesDialog = false
                         // Write to Firestore in GlobalScope
                         kotlinx.coroutines.MainScope().launch {
-                            FirestoreService.updateFavoriteBooks("u1", selectedIds)
+                            FirestoreService.updateFavoriteBooks(AuthService.getUid(), selectedIds)
                         }
                     }
                 )
@@ -1879,7 +1889,7 @@ fun PaginexProfileScreen(
 
 
             // ---- MY POSTS SECTION ----
-            val myPosts = MockData.feedPosts.filter { it.userId == (user.id.ifEmpty { "u1" }) }
+            val myPosts = MockData.feedPosts.filter { it.userId == (AuthService.getUid()) }
             if (myPosts.isNotEmpty()) {
                 Spacer(modifier = Modifier.height(20.dp))
                 Card(
@@ -1950,7 +1960,7 @@ fun PaginexProfileScreen(
         AddBookToLibraryDialog(
             onDismiss = { showAddBookDialog = false },
             onBookAdded = { book, status ->
-                val uid = user.id.ifEmpty { "u1" }
+                val uid = AuthService.getUid()
                 // Optimistically add to local cache
                 val newStatus = ReadingStatus(
                     id = "rs_${System.currentTimeMillis()}",
@@ -1978,6 +1988,7 @@ fun PaginexProfileScreen(
 fun EditProfileScreen(onSave: () -> Unit) {
     val user = MockData.currentUser
     val userEmail = AuthService.getUserEmail()
+    val context = androidx.compose.ui.platform.LocalContext.current
     
     // We parse name/surname from fullName for simpler editing, though you could keep it as fullName
     val initialName = user.fullName.substringBefore(" ")
@@ -2028,7 +2039,7 @@ fun EditProfileScreen(onSave: () -> Unit) {
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
                 AsyncImage(
-                    model = avatarUri ?: user.avatarUrl.ifEmpty { "https://via.placeholder.com/200" },
+                    model = avatarUri ?: avatarModel(user.avatarUrl),
                     contentDescription = null,
                     modifier = Modifier
                         .size(100.dp)
@@ -2061,30 +2072,33 @@ fun EditProfileScreen(onSave: () -> Unit) {
                 onClick = {
                     if (isLoading) return@Button
                     isLoading = true
+                    val actualUid = AuthService.getUid()
                     scope.launch {
-                        // 1. Upload new avatar if selected
-                        var newAvatarUrl = user.avatarUrl
-                        if (avatarUri != null) {
-                            val uploadedUrl = FirestoreService.uploadProfileImage(user.id, avatarUri!!)
-                            if (uploadedUrl != null) newAvatarUrl = uploadedUrl
+                        kotlinx.coroutines.withContext(kotlinx.coroutines.NonCancellable) {
+                            // 1. Upload new avatar if selected
+                            var newAvatarUrl = user.avatarUrl
+                            if (avatarUri != null) {
+                                val uploadedUrl = FirestoreService.uploadProfileImage(actualUid, avatarUri!!, context)
+                                if (uploadedUrl != null) newAvatarUrl = uploadedUrl
+                            }
+                            
+                            // 2. Update Firestore
+                            val updates = mapOf(
+                                "name" to name,
+                                "surname" to surname,
+                                "username" to username,
+                                "bio" to bio,
+                                "location" to location,
+                                "avatarUrl" to newAvatarUrl
+                            )
+                            val success = FirestoreService.updateUserProfile(actualUid, updates)
+                            
+                            if (success) {
+                                FirestoreService.syncMockData() // Refresh local cache
+                                onSave()
+                            }
+                            isLoading = false
                         }
-                        
-                        // 2. Update Firestore
-                        val updates = mapOf(
-                            "name" to name,
-                            "surname" to surname,
-                            "username" to username,
-                            "bio" to bio,
-                            "location" to location,
-                            "avatarUrl" to newAvatarUrl
-                        )
-                        val success = FirestoreService.updateUserProfile(user.id, updates)
-                        
-                        if (success) {
-                            FirestoreService.syncMockData() // Refresh local cache
-                            onSave()
-                        }
-                        isLoading = false
                     }
                 }, 
                 modifier = Modifier.align(Alignment.CenterHorizontally).height(50.dp).width(200.dp),
@@ -2207,7 +2221,7 @@ fun SavedPostsScreen(onBookClick: (String) -> Unit = {}) {
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun BookListsScreen(targetUserId: String, onBack: () -> Unit) {
-    val currentUid = MockData.currentUser.id.ifEmpty { "u1" }
+    val currentUid = AuthService.getUid()
     val isOwner = targetUserId == currentUid
     var selectedTab by remember { mutableIntStateOf(0) }
     
@@ -2307,17 +2321,18 @@ fun BookListsScreen(targetUserId: String, onBack: () -> Unit) {
                                     likesCount = if (newIsLiked) current.likesCount + 1 else (current.likesCount - 1).coerceAtLeast(0)
                                 )
                                 kotlinx.coroutines.MainScope().launch {
-                                    FirestoreService.toggleBookListLike(list.id, currentUid)
+                                    FirestoreService.toggleBookListLike(list.id, currentUid, newIsLiked)
                                 }
                             }
                         },
                         onSaveClick = {
                             val idx = MockData.sampleBookLists.indexOfFirst { it.id == list.id }
+                            val newIsSaved = if (idx != -1) !MockData.sampleBookLists[idx].isSaved else !list.isSaved
                             if (idx != -1) {
                                 val current = MockData.sampleBookLists[idx]
-                                MockData.sampleBookLists[idx] = current.copy(isSaved = !current.isSaved)
+                                MockData.sampleBookLists[idx] = current.copy(isSaved = newIsSaved)
                                 kotlinx.coroutines.MainScope().launch {
-                                    FirestoreService.toggleBookListSave(list.id, currentUid)
+                                    FirestoreService.toggleBookListSave(list.id, currentUid, newIsSaved)
                                 }
                             }
                         },
@@ -2775,7 +2790,7 @@ fun AddBookToListDialog(bookList: BookList, onDismiss: () -> Unit, onBookAdded: 
         },
         text = {
             LazyColumn(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                val currentUid = MockData.currentUser.id.ifEmpty { "u1" }
+                val currentUid = AuthService.getUid()
                 val userLibraryBooks = MockData.readingStatuses.filter { it.userId == currentUid }.map { it.book }
                 val availableBooks = userLibraryBooks.filter { b -> bookList.books.none { it.id == b.id } }
                 
@@ -2866,7 +2881,7 @@ fun AddBookToLibraryDialog(onDismiss: () -> Unit, onBookAdded: (Book, String) ->
                 Text("Select book:", color = Color.Gray, fontSize = 12.sp)
                 Spacer(modifier = Modifier.height(8.dp))
                 LazyColumn(modifier = Modifier.height(200.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    val currentUid = MockData.currentUser.id.ifEmpty { "u1" }
+                    val currentUid = AuthService.getUid()
                     val existingBookIds = MockData.readingStatuses.filter { it.userId == currentUid }.map { it.book.id }.toSet()
                     val filteredBooks = MockData.sampleBooks.filter { it.title.contains(searchQuery, ignoreCase = true) && !existingBookIds.contains(it.id) }
                     items(filteredBooks) { book ->
@@ -2908,7 +2923,7 @@ fun AddBookToLibraryDialog(onDismiss: () -> Unit, onBookAdded: (Book, String) ->
 fun ConstellationScreen(targetUserId: String, onBack: () -> Unit, onBookClick: (String) -> Unit) {
     var targetUser by remember { mutableStateOf(MockData.currentUser) }
     LaunchedEffect(targetUserId) {
-        if (targetUserId != MockData.currentUser.id && targetUserId != "u1") {
+        if (targetUserId != AuthService.getUid()) {
             FirestoreService.getUserProfile(targetUserId)?.let { targetUser = it }
         }
     }
@@ -2945,7 +2960,7 @@ fun ConstellationScreen(targetUserId: String, onBack: () -> Unit, onBookClick: (
                 title = {
                     Column {
                         Text("Constellation", color = PaginexWhite, fontWeight = FontWeight.Bold, fontSize = 18.sp)
-                        val isMe = targetUserId == "u1" || targetUserId == MockData.currentUser.id
+                        val isMe = targetUserId == AuthService.getUid()
                         Text(if (isMe) "My Book Universe" else "Book Universe", color = Color(0xFFFFD700), fontSize = 11.sp)
                     }
                 },
@@ -3649,7 +3664,7 @@ fun CreatePostScreen(initialPostId: String? = null, onPost: () -> Unit, onDrafts
 
         if (showLibrarySelector) {
             LibrarySelectorSheet(
-                targetUserId = MockData.currentUser.id.ifEmpty { "u1" },
+                targetUserId = AuthService.getUid(),
                 onDismiss = { showLibrarySelector = false },
                 onBookSelected = { rs -> 
                     selectedBook = rs.book
@@ -3662,7 +3677,7 @@ fun CreatePostScreen(initialPostId: String? = null, onPost: () -> Unit, onDrafts
 
         if (showListSelector) {
             BookListSelectorSheet(
-                targetUserId = MockData.currentUser.id.ifEmpty { "u1" },
+                targetUserId = AuthService.getUid(),
                 onDismiss = { showListSelector = false },
                 onListSelected = { lst ->
                     selectedBookList = lst
@@ -3683,7 +3698,7 @@ fun CreatePostScreen(initialPostId: String? = null, onPost: () -> Unit, onDrafts
                     Button(
                         onClick = { 
                             showPublishDialog = false
-                            val uid = MockData.currentUser.id.ifEmpty { "u1" }
+                            val uid = AuthService.getUid()
                             val dummyBook = if (selectedBookList != null) {
                                 Book(
                                     id = selectedBookList!!.id,
@@ -3729,7 +3744,7 @@ fun CreatePostScreen(initialPostId: String? = null, onPost: () -> Unit, onDrafts
                     OutlinedButton(
                         onClick = { 
                             showPublishDialog = false
-                            val uid = MockData.currentUser.id.ifEmpty { "u1" }
+                            val uid = AuthService.getUid()
                             val dummyBook = if (selectedBookList != null) {
                                 Book(
                                     id = selectedBookList!!.id,
@@ -4064,7 +4079,7 @@ fun SettingsScreen(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 AsyncImage(
-                    model = user.avatarUrl.ifEmpty { "https://via.placeholder.com/200" },
+                    model = avatarModel(user.avatarUrl),
                     contentDescription = null,
                     modifier = Modifier
                         .size(72.dp)
@@ -4377,7 +4392,7 @@ fun PublicProfileScreen(
         userFeed.addAll(posts.filter { it.userId == userId })
         
         // Check if current user is following this user
-        val followsReq = FirestoreService.getFollowing("u1")
+        val followsReq = FirestoreService.getFollowing(AuthService.getUid())
         isFollowing = followsReq.any { it.id == userId }
     }
 
@@ -4487,13 +4502,13 @@ fun PublicProfileScreen(
                                     isFollowing = false
                                     MockData.currentUser = MockData.currentUser.copy(followingCount = (MockData.currentUser.followingCount - 1).coerceAtLeast(0))
                                     kotlinx.coroutines.MainScope().launch {
-                                        FirestoreService.unfollowUser("u1", userId)
+                                        FirestoreService.unfollowUser(AuthService.getUid(), userId)
                                     }
                                 } else {
                                     isFollowing = true
                                     MockData.currentUser = MockData.currentUser.copy(followingCount = MockData.currentUser.followingCount + 1)
                                     kotlinx.coroutines.MainScope().launch {
-                                        FirestoreService.followUser("u1", userId)
+                                        FirestoreService.followUser(AuthService.getUid(), userId)
                                     }
                                 }
                             }

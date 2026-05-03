@@ -29,7 +29,7 @@ import kotlinx.coroutines.launch
 @Composable
 fun UserListSheet(
     title: String,
-    targetUserId: String = "u1",
+    targetUserId: String = AuthService.getUid(),
     onDismiss: () -> Unit
 ) {
     val users = remember { mutableStateListOf<FireUser>() }
@@ -91,7 +91,7 @@ fun UserListItem(user: FireUser) {
         verticalAlignment = Alignment.CenterVertically
     ) {
         AsyncImage(
-            model = user.avatarUrl.ifEmpty { "https://via.placeholder.com/200" },
+            model = avatarModel(user.avatarUrl),
             contentDescription = null,
             modifier = Modifier
                 .size(44.dp)
@@ -119,10 +119,10 @@ fun UserListItem(user: FireUser) {
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun UserLibrarySheet(
-    targetUserId: String = "u1",
+    targetUserId: String = AuthService.getUid(),
     onDismiss: () -> Unit
 ) {
-    val isOwner = targetUserId == (MockData.currentUser.id.ifEmpty { "u1" })
+    val isOwner = targetUserId == AuthService.getUid()
     val library = remember(targetUserId, MockData.readingStatuses.size, MockData.readingStatuses.toList()) {
         MockData.readingStatuses.filter { it.userId == targetUserId }.sortedByDescending { it.addedAt }
     }
