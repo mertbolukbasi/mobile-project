@@ -3360,9 +3360,25 @@ fun ConstellationScreen(targetUserId: String, onBack: () -> Unit, onBookClick: (
             FirestoreService.getUserProfile(targetUserId)?.let { targetUser = it }
         }
     }
-    val readingList = remember(AppCache.readingStatuses.size, targetUserId) {
-        AppCache.readingStatuses.filter { it.userId == targetUserId }
+    val readingList = AppCache.readingStatuses.filter { it.userId == targetUserId }
+    val viewerUid = AuthService.getUid()
+    val favoriteIdsForRank =
+        if (targetUserId == viewerUid) AppCache.currentUser.favoriteBooks else targetUser.favoriteBooks
+    val libraryKey = readingList.joinToString("|") { "${it.book.id}:${it.addedAt}" }
+    val postsKey = AppCache.feedPosts.joinToString("|") {
+        "${it.id}:${it.isLiked}:${it.isSaved}:${it.rating}:${it.userId}:${it.book.id}"
     }
+    val rankedResult = remember(libraryKey, postsKey, favoriteIdsForRank.joinToString(), targetUserId, viewerUid) {
+        ConstellationRanking.rankForConstellation(
+            readingList,
+            AppCache.feedPosts.toList(),
+            favoriteIdsForRank,
+            targetUserId,
+            viewerUid
+        )
+    }
+    val rankedGenreMap = rankedResult.rankedByGenre
+    val extraBooksPerGenre = rankedResult.extraBooksPerGenre
     val infiniteTransition = rememberInfiniteTransition()
     val twinkle by infiniteTransition.animateFloat(
         initialValue = 0.4f, targetValue = 1f,
@@ -3473,9 +3489,9 @@ fun ConstellationScreen(targetUserId: String, onBack: () -> Unit, onBookClick: (
                         )
 
                         val isExpanded = expandedGenres.contains(genre)
-                        val books = genreMap[genre] ?: emptyList()
-                        
-                        // Only render books if expanded — exactly 1 star per book
+                        val books = rankedGenreMap[genre] ?: emptyList()
+
+                        // Only render books if expanded — top-ranked stars per genre
                         val renderBooks = if (isExpanded) books else emptyList()
 
                         val genreAngleBase = Math.toRadians((gi * 360.0 / genreCount) - 90.0)
@@ -3544,8 +3560,9 @@ fun ConstellationScreen(targetUserId: String, onBack: () -> Unit, onBookClick: (
                     
                     Box(
                         modifier = Modifier
-                            .offset(x = with(density) { (gx - 40f).toDp() }, y = with(density) { (gy - 20f).toDp() })
-                            .size(80.dp)
+                            .offset(x = with(density) { (gx - 44f).toDp() }, y = with(density) { (gy - 28f).toDp() })
+                            .widthIn(min = 72.dp, max = 100.dp)
+                            .wrapContentHeight()
                             .clickable {
                                 scope.launch {
                                     if (isExpanded) {
@@ -3566,17 +3583,31 @@ fun ConstellationScreen(targetUserId: String, onBack: () -> Unit, onBookClick: (
                             },
                         contentAlignment = Alignment.Center
                     ) {
-                        Text(
-                            genre, 
-                            color = if (isExpanded) PaginexNeonTeal else Color(0xFFFFD700).copy(alpha = 0.9f), 
-                            fontSize = (10 / scale.coerceAtLeast(1f)).sp, 
-                            fontWeight = FontWeight.Bold, 
-                            textAlign = TextAlign.Center
-                        )
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            Text(
+                                genre,
+                                color = if (isExpanded) PaginexNeonTeal else Color(0xFFFFD700).copy(alpha = 0.9f),
+                                fontSize = (10 / scale.coerceAtLeast(1f)).sp,
+                                fontWeight = FontWeight.Bold,
+                                textAlign = TextAlign.Center,
+                                maxLines = 2,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                            val extra = extraBooksPerGenre[genre] ?: 0
+                            if (isExpanded && extra > 0) {
+                                Text(
+                                    "+$extra in library",
+                                    color = PaginexWhite.copy(alpha = 0.55f),
+                                    fontSize = max(6f, 7.5f / scale.coerceAtLeast(1f)).sp,
+                                    textAlign = TextAlign.Center,
+                                    maxLines = 1
+                                )
+                            }
+                        }
                     }
 
                     if (isExpanded) {
-                        val books = genreMap[genre] ?: emptyList()
+                        val books = rankedGenreMap[genre] ?: emptyList()
                         val genreAngleBase = Math.toRadians((gi * 360.0 / genreCount) - 90.0)
                         books.forEachIndexed { bi, bookStatus ->
                             val spread = if (books.size == 1) 0.0 else (bi - (books.size - 1) / 2.0) * 0.7
@@ -3631,7 +3662,11 @@ fun ConstellationScreen(targetUserId: String, onBack: () -> Unit, onBookClick: (
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Box(modifier = Modifier.size(8.dp).background(PaginexNeonTeal, CircleShape))
                     Spacer(modifier = Modifier.width(6.dp))
-                    Text("Book", color = PaginexWhite.copy(alpha = 0.7f), fontSize = 10.sp)
+                    Text(
+                        "Book (top picks)",
+                        color = PaginexWhite.copy(alpha = 0.7f),
+                        fontSize = 10.sp
+                    )
                 }
             }
 
