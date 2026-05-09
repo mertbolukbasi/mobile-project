@@ -25,7 +25,10 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
+import java.util.concurrent.ConcurrentHashMap
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -48,6 +51,7 @@ fun CommentsSheet(
     val likeCounts = remember { mutableStateMapOf<String, Int>() }
     val currentUserId = AuthService.getUid()
     val isLikedByUser = remember { mutableStateMapOf<String, Boolean>() }
+    val commentLikeLocks = remember { ConcurrentHashMap<String, Mutex>() }
 
     LaunchedEffect(tableId) {
         val fetchedComments = FirestoreService.getComments(tableId)
@@ -129,16 +133,27 @@ fun CommentsSheet(
                                 }
                             },
                             onLikeClick = {
-                                val currentLiked = isLikedByUser[comment.id] ?: false
-                                val currentCount = likeCounts[comment.id] ?: 0
-                                
-                                // Optimistic UI
-                                isLikedByUser[comment.id] = !currentLiked
-                                likeCounts[comment.id] = if (currentLiked) currentCount - 1 else currentCount + 1
-                                
+                                val prevLiked = isLikedByUser[comment.id] ?: false
+                                val prevCount = likeCounts[comment.id] ?: 0
+                                val newLiked = !prevLiked
+
+                                isLikedByUser[comment.id] = newLiked
+                                likeCounts[comment.id] =
+                                    if (prevLiked) (prevCount - 1).coerceAtLeast(0) else prevCount + 1
+
                                 scope.launch {
-                                    FirestoreService.toggleCommentLike(comment.id, currentUserId, !currentLiked)
-                                    isLikedByUser[comment.id] = !(isLikedByUser[comment.id] ?: false)
+                                    val lock = commentLikeLocks.getOrPut(comment.id) { Mutex() }
+                                    lock.withLock {
+                                        val ok = FirestoreService.toggleCommentLike(
+                                            comment.id,
+                                            currentUserId,
+                                            newLiked
+                                        )
+                                        if (!ok) {
+                                            isLikedByUser[comment.id] = prevLiked
+                                            likeCounts[comment.id] = prevCount
+                                        }
+                                    }
                                 }
                             }
                         )
