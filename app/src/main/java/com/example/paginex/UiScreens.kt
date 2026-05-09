@@ -658,8 +658,7 @@ fun UserGalaxy(
                     glowColor = PaginexNeonTeal,
                     isShattered = false,
                     onClick = { 
-                        val p = MockData.feedPosts.find { it.book.id == book.id && it.userId == user.id }
-                        if (p != null) onBookClick(p.id)
+                        onBookClick(book.id)
                     }
                 )
             }
@@ -4849,7 +4848,8 @@ fun PostListScreen(
     onNavigateToUser: (String) -> Unit,
     onNavigateToEdit: (String) -> Unit
 ) {
-    val posts = remember(postId, mode, MockData.feedPosts.size) {
+    var postsVersion by remember { mutableIntStateOf(0) }
+    val posts = remember(postId, mode, MockData.feedPosts.size, postsVersion) {
         if (mode == "single") {
             MockData.feedPosts.filter { it.id == postId }
         } else if (mode == "saved_book") {
@@ -4861,7 +4861,7 @@ fun PostListScreen(
         }
     }
     
-    val title = if (mode == "single") "My Post" else "Saved Posts"
+    val title = if (mode == "single") "Posts" else "Saved Posts"
     val scope = rememberCoroutineScope()
     val snackbarHostState = remember { SnackbarHostState() }
 
@@ -4900,6 +4900,7 @@ fun PostListScreen(
                                 }
                             } else {
                                 MockData.feedPosts.removeAll { it.id == postToDelete.id }
+                                postsVersion++
                                 kotlinx.coroutines.MainScope().launch {
                                     FirestoreService.deletePost(postToDelete.id)
                                 }
@@ -4915,6 +4916,7 @@ fun PostListScreen(
                                     isLiked = newIsLiked,
                                     likesCount = newLikesCount
                                 )
+                                postsVersion++
                             }
                             kotlinx.coroutines.MainScope().launch {
                                 FirestoreService.toggleLike(post.id, AuthService.getUid(), newIsLiked)
@@ -4925,9 +4927,20 @@ fun PostListScreen(
                             val newIsSaved = if (index != -1) !MockData.feedPosts[index].isSaved else !post.isSaved
                             if (index != -1) {
                                 MockData.feedPosts[index] = MockData.feedPosts[index].copy(isSaved = newIsSaved)
+                                postsVersion++
                             }
                             kotlinx.coroutines.MainScope().launch {
                                 FirestoreService.toggleSave(post.id, AuthService.getUid(), newIsSaved)
+                            }
+                        },
+                        onCommentAdded = {
+                            val index = MockData.feedPosts.indexOfFirst { it.id == post.id }
+                            if (index != -1) {
+                                val currentPost = MockData.feedPosts[index]
+                                MockData.feedPosts[index] = currentPost.copy(
+                                    commentsCount = currentPost.commentsCount + 1
+                                )
+                                postsVersion++
                             }
                         }
                     )
