@@ -1,6 +1,7 @@
 package com.example.paginex
 
 import android.annotation.SuppressLint
+import android.app.Activity
 import androidx.compose.animation.*
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.*
@@ -37,6 +38,7 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.Velocity
@@ -94,6 +96,8 @@ sealed class Screen(val route: String, val icon: ImageVector? = null, val label:
 @Composable
 fun PaginexApp() {
     val navController = rememberNavController()
+    val context = LocalContext.current
+    val activity = context as? Activity
     val navBackStackEntry by navController.currentBackStackEntryAsState()
     val currentRoute = navBackStackEntry?.destination?.route
     val showBottomBar = currentRoute in listOf(
@@ -107,10 +111,25 @@ fun PaginexApp() {
         Screen.Profile.route
     )
     var selectedMainTabIndex by rememberSaveable { mutableIntStateOf(0) }
+    var showExitConfirmDialog by remember { mutableStateOf(false) }
+    val tabBackHistory = remember { mutableStateListOf<Int>() }
 
-    LaunchedEffect(currentRoute) {
-        val idx = swipeableTabRoutes.indexOf(currentRoute)
-        if (idx >= 0 && idx != selectedMainTabIndex) selectedMainTabIndex = idx
+    val isAtMainRoot = currentRoute == Screen.Home.route && navController.previousBackStackEntry == null
+    androidx.activity.compose.BackHandler(enabled = isAtMainRoot || showExitConfirmDialog) {
+        if (showExitConfirmDialog) {
+            showExitConfirmDialog = false
+        } else if (isAtMainRoot && tabBackHistory.isNotEmpty()) {
+            selectedMainTabIndex = tabBackHistory.removeAt(tabBackHistory.lastIndex)
+        } else {
+            showExitConfirmDialog = true
+        }
+    }
+
+    fun setSelectedMainTab(newIndex: Int) {
+        if (newIndex == selectedMainTabIndex) return
+        tabBackHistory.remove(newIndex)
+        tabBackHistory.add(selectedMainTabIndex)
+        selectedMainTabIndex = newIndex
     }
 
     fun navigateToTab(route: String) {
@@ -183,7 +202,7 @@ fun PaginexApp() {
                                     .clickable { 
                                         when {
                                             screen.route == Screen.CreatePost.route -> navigateToTab(screen.route)
-                                            tabIndex >= 0 -> selectedMainTabIndex = tabIndex
+                                            tabIndex >= 0 -> setSelectedMainTab(tabIndex)
                                             else -> navigateToTab(screen.route)
                                         }
                                     }
@@ -288,7 +307,7 @@ fun PaginexApp() {
             composable(Screen.Home.route) {
                 MainTabsPager(
                     selectedTabIndex = selectedMainTabIndex,
-                    onTabSettled = { settledIndex -> selectedMainTabIndex = settledIndex },
+                    onTabSettled = { settledIndex -> setSelectedMainTab(settledIndex) },
                     navController = navController
                 )
             }
@@ -421,6 +440,37 @@ fun PaginexApp() {
         }
     }
 
+    if (showExitConfirmDialog) {
+        AlertDialog(
+            onDismissRequest = { showExitConfirmDialog = false },
+            title = { Text("Exit app?", color = PaginexWhite, fontWeight = FontWeight.Bold) },
+            text = { Text("Are you sure you want to exit the app?", color = PaginexWhite.copy(alpha = 0.8f)) },
+            containerColor = PaginexGalaxy,
+            shape = RoundedCornerShape(20.dp),
+            confirmButton = {
+                Button(
+                    onClick = {
+                        showExitConfirmDialog = false
+                        activity?.finish()
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFEF4444)),
+                    shape = RoundedCornerShape(12.dp)
+                ) {
+                    Text("Yes", color = Color.White, fontWeight = FontWeight.Bold)
+                }
+            },
+            dismissButton = {
+                Button(
+                    onClick = { showExitConfirmDialog = false },
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF22C55E)),
+                    shape = RoundedCornerShape(12.dp)
+                ) {
+                    Text("No", color = Color.White, fontWeight = FontWeight.Bold)
+                }
+            }
+        )
+    }
+
 }
 
 @Composable
@@ -436,7 +486,7 @@ fun MainTabsPager(
 
     LaunchedEffect(selectedTabIndex) {
         if (!pagerState.isScrollInProgress && pagerState.currentPage != selectedTabIndex) {
-            pagerState.animateScrollToPage(selectedTabIndex)
+            pagerState.scrollToPage(selectedTabIndex)
         }
     }
 
@@ -1573,6 +1623,7 @@ fun ExploreScreen(onBookClick: (String) -> Unit = {}) {
             onRemoveBookClick = {}
         )
     }
+
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -1820,10 +1871,6 @@ fun PaginexProfileScreen(
     val availableStatuses = listOf("Completed", "Reading", "Plan To Read", "On-hold", "Dropped")
     val filteredLibrary = MockData.readingStatuses.filter { it.status == selectedFilterStatus && it.userId == (AuthService.getUid()) }
     val scope = rememberCoroutineScope()
-
-    androidx.activity.compose.BackHandler(enabled = true) {
-        showLogoutDialog = true
-    }
 
     if (showLogoutDialog) {
         AlertDialog(
