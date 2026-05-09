@@ -10,7 +10,7 @@ package com.example.paginex
  */
 object ConstellationRanking {
 
-    const val TOP_BOOKS_PER_GENRE = 12
+    const val TOP_BOOKS_PER_GENRE = 5
 
     private const val W_OWN_POST = 8f
     private const val W_RATING_SUM = 1.5f

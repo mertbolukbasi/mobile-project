@@ -3465,14 +3465,26 @@ fun ConstellationScreen(targetUserId: String, onBack: () -> Unit, onBookClick: (
                 val density = LocalDensity.current
                 val bwW = constraints.maxWidth.toFloat()
                 val bwH = constraints.maxHeight.toFloat()
-                val bookLabelMaxWidth = with(density) { (bwW * 0.34f).toDp() }.coerceIn(128.dp, 220.dp)
+                val bookLabelMaxWidth = with(density) { (bwW * 0.22f).toDp() }.coerceIn(64.dp, 132.dp)
                 val cx = bwW / 2f
                 val cy = bwH / 2f
                 val rootPos = Offset(cx, cy)
                 val genreCount = genres.size.coerceAtLeast(1)
                 val genreRadius = bwW * 0.28f
-                val bookRadiusConfig = bwW * 0.16f
+                val bookRadiusConfig = bwW * 0.185f
                 val neonTeal = PaginexNeonTeal
+
+                fun bookOrbitAngleAndDist(bi: Int, bookCount: Int, genreAngleBaseRad: Double): Pair<Double, Float> {
+                    val n = bookCount.coerceAtLeast(1)
+                    val angleStepRad =
+                        if (n <= 1) 0.0 else (3.35 / (n - 1)).coerceIn(0.28, 0.88)
+                    val spread =
+                        if (n <= 1) 0.0 else (bi - (n - 1) / 2.0) * angleStepRad
+                    val ang = genreAngleBaseRad + spread
+                    val ring = bi % 2
+                    val dist = bookRadiusConfig + ring * 54f
+                    return ang to dist
+                }
 
                 Canvas(modifier = Modifier.fillMaxSize()) {
                     genres.forEachIndexed { gi, genre ->
@@ -3495,12 +3507,11 @@ fun ConstellationScreen(targetUserId: String, onBack: () -> Unit, onBookClick: (
                         val renderBooks = if (isExpanded) books else emptyList()
 
                         val genreAngleBase = Math.toRadians((gi * 360.0 / genreCount) - 90.0)
+                        val rc = renderBooks.size
                         renderBooks.forEachIndexed { bi, bookStatus ->
-                            val spread = if (renderBooks.size == 1) 0.0 else (bi - (renderBooks.size - 1) / 2.0) * 0.7
-                            val bookAngle = genreAngleBase + spread
-                            val bookDist = bookRadiusConfig + (if (bi % 2 == 0) 10f else -10f)
-                            val bx = gx + (bookDist * cos(bookAngle)).toFloat()
-                            val by = gy + (bookDist * sin(bookAngle)).toFloat()
+                            val (bookAngleRad, bookDist) = bookOrbitAngleAndDist(bi, rc, genreAngleBase)
+                            val bx = gx + (bookDist * cos(bookAngleRad)).toFloat()
+                            val by = gy + (bookDist * sin(bookAngleRad)).toFloat()
                             val bPos = Offset(bx, by)
 
                             drawLine(
@@ -3512,15 +3523,15 @@ fun ConstellationScreen(targetUserId: String, onBack: () -> Unit, onBookClick: (
                             val bookAlpha = twinkles[bi % twinkles.size]
                             drawCircle(
                                 color = neonTeal.copy(alpha = bookAlpha * 0.9f),
-                                radius = 7f / scale.coerceAtLeast(1f),
+                                radius = 5.5f / scale.coerceAtLeast(1f),
                                 center = bPos
                             )
                             drawCircle(
                                 brush = Brush.radialGradient(
-                                    colors = listOf(neonTeal.copy(alpha = bookAlpha * 0.5f), Color.Transparent),
-                                    center = bPos, radius = 20f / scale.coerceAtLeast(1f)
+                                    colors = listOf(neonTeal.copy(alpha = bookAlpha * 0.45f), Color.Transparent),
+                                    center = bPos, radius = 14f / scale.coerceAtLeast(1f)
                                 ),
-                                radius = 20f / scale.coerceAtLeast(1f),
+                                radius = 14f / scale.coerceAtLeast(1f),
                                 center = bPos
                             )
                         }
@@ -3587,7 +3598,7 @@ fun ConstellationScreen(targetUserId: String, onBack: () -> Unit, onBookClick: (
                             Text(
                                 genre,
                                 color = if (isExpanded) PaginexNeonTeal else Color(0xFFFFD700).copy(alpha = 0.9f),
-                                fontSize = (10 / scale.coerceAtLeast(1f)).sp,
+                                fontSize = (8f / scale.coerceAtLeast(1f)).sp,
                                 fontWeight = FontWeight.Bold,
                                 textAlign = TextAlign.Center,
                                 maxLines = 2,
@@ -3598,7 +3609,7 @@ fun ConstellationScreen(targetUserId: String, onBack: () -> Unit, onBookClick: (
                                 Text(
                                     "+$extra in library",
                                     color = PaginexWhite.copy(alpha = 0.55f),
-                                    fontSize = max(6f, 7.5f / scale.coerceAtLeast(1f)).sp,
+                                    fontSize = max(5f, 6f / scale.coerceAtLeast(1f)).sp,
                                     textAlign = TextAlign.Center,
                                     maxLines = 1
                                 )
@@ -3609,19 +3620,19 @@ fun ConstellationScreen(targetUserId: String, onBack: () -> Unit, onBookClick: (
                     if (isExpanded) {
                         val books = rankedGenreMap[genre] ?: emptyList()
                         val genreAngleBase = Math.toRadians((gi * 360.0 / genreCount) - 90.0)
+                        val bc = books.size
                         books.forEachIndexed { bi, bookStatus ->
-                            val spread = if (books.size == 1) 0.0 else (bi - (books.size - 1) / 2.0) * 0.7
-                            val bookAngle = genreAngleBase + spread
-                            val bookDist = bookRadiusConfig + (if (bi % 2 == 0) 10f else -10f)
-                            val bx = gx + (bookDist * cos(bookAngle)).toFloat()
-                            val by = gy + (bookDist * sin(bookAngle)).toFloat()
-                            val bookLabelFontSize = (10f / scale.coerceAtLeast(1f)).coerceIn(8f, 12f)
+                            val (bookAngleRad, bookDist) = bookOrbitAngleAndDist(bi, bc, genreAngleBase)
+                            val bx = gx + (bookDist * cos(bookAngleRad)).toFloat()
+                            val by = gy + (bookDist * sin(bookAngleRad)).toFloat()
+                            val bookLabelFontSize =
+                                (6f / scale.coerceAtLeast(1f)).coerceIn(5f, 7f)
                             val halfLabelPx = with(density) { bookLabelMaxWidth.toPx() / 2f }
                             Box(
                                 modifier = Modifier
                                     .offset(
                                         x = with(density) { (bx - halfLabelPx).toDp() },
-                                        y = with(density) { (by + 10f).toDp() }
+                                        y = with(density) { (by + 6f).toDp() }
                                     )
                                     .width(bookLabelMaxWidth)
                                     .clickable { onBookClick(bookStatus.book.id) }
@@ -3630,8 +3641,8 @@ fun ConstellationScreen(targetUserId: String, onBack: () -> Unit, onBookClick: (
                                     bookStatus.book.title,
                                     color = PaginexNeonTeal.copy(alpha = 0.85f),
                                     fontSize = bookLabelFontSize.sp,
-                                    lineHeight = (bookLabelFontSize + 2f).sp,
-                                    maxLines = 3,
+                                    lineHeight = (bookLabelFontSize + 1f).sp,
+                                    maxLines = 2,
                                     overflow = TextOverflow.Ellipsis,
                                     textAlign = TextAlign.Center,
                                     modifier = Modifier.fillMaxWidth()
