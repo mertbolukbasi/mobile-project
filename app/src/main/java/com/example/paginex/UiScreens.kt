@@ -432,7 +432,8 @@ fun PaginexApp() {
                 PublicProfileScreen(
                     userId = userId,
                     onBack = { navController.popBackStack() },
-                    onBookClick = { postId -> navController.navigate("detail/$postId") },
+                    onGalaxyBookClick = { bookId -> navController.navigate("detail/$bookId") },
+                    onPostClick = { postId -> navController.navigate("post_list/$postId?mode=single") },
                     onListsClick = { navController.navigate("book_lists/${userId}") },
                     onConstellationClick = { navController.navigate("constellation/${userId}") }
                 )
@@ -523,7 +524,8 @@ fun MainTabsPager(
                 onEditClick = { navController.navigate(Screen.Settings.route) },
                 onListsClick = { navController.navigate("book_lists/${AuthService.getUid()}") },
                 onConstellationClick = { navController.navigate("constellation/${AuthService.getUid()}") },
-                onBookClick = { postId -> navController.navigate("post_list/$postId?mode=single") },
+                onGalaxyBookClick = { bookId -> navController.navigate("detail/$bookId") },
+                onMyPostClick = { postId -> navController.navigate("post_list/$postId?mode=single") },
                 onLogoutClick = {
                     AuthService.logout()
                     navController.navigate(Screen.Login.route) { popUpTo(0) }
@@ -697,9 +699,7 @@ fun UserGalaxy(
             val yOffset = (orbitRadiusDp * sin(rad)).dp
 
             Box(
-                modifier = Modifier
-                    .offset(x = xOffset, y = yOffset)
-                    .clip(CircleShape),
+                modifier = Modifier.offset(x = xOffset, y = yOffset),
                 contentAlignment = Alignment.Center
             ) {
                 CosmicPlanet(
@@ -1852,7 +1852,8 @@ fun PaginexProfileScreen(
     onEditClick: () -> Unit, // This will now go to SettingsScreen
     onListsClick: () -> Unit,
     onConstellationClick: () -> Unit,
-    onBookClick: (String) -> Unit,
+    onGalaxyBookClick: (String) -> Unit,
+    onMyPostClick: (String) -> Unit,
     onLogoutClick: () -> Unit = {} // This might not be needed directly here anymore, but keeping it
 ) {
     val user = MockData.currentUser
@@ -1922,7 +1923,7 @@ fun PaginexProfileScreen(
             Spacer(modifier = Modifier.height(24.dp))
 
             // ---- GALAXY VISUALIZATION ----
-            UserGalaxy(user = user, rotation = rotation, onBookClick = onBookClick)
+            UserGalaxy(user = user, rotation = rotation, onBookClick = onGalaxyBookClick)
 
             Spacer(modifier = Modifier.height(12.dp))
 
@@ -2192,7 +2193,7 @@ fun PaginexProfileScreen(
                                     .padding(bottom = 10.dp)
                                     .clip(RoundedCornerShape(10.dp))
                                     .background(PaginexGlass)
-                                    .clickable { onBookClick(post.id) }
+                                    .clickable { onMyPostClick(post.id) }
                                     .padding(10.dp)
                                     .fillMaxWidth()
                             ) {
@@ -3297,6 +3298,7 @@ fun ConstellationScreen(targetUserId: String, onBack: () -> Unit, onBookClick: (
                 val density = LocalDensity.current
                 val bwW = constraints.maxWidth.toFloat()
                 val bwH = constraints.maxHeight.toFloat()
+                val bookLabelMaxWidth = with(density) { (bwW * 0.34f).toDp() }.coerceIn(128.dp, 220.dp)
                 val cx = bwW / 2f
                 val cy = bwH / 2f
                 val rootPos = Offset(cx, cy)
@@ -3431,19 +3433,26 @@ fun ConstellationScreen(targetUserId: String, onBack: () -> Unit, onBookClick: (
                             val bookDist = bookRadiusConfig + (if (bi % 2 == 0) 10f else -10f)
                             val bx = gx + (bookDist * cos(bookAngle)).toFloat()
                             val by = gy + (bookDist * sin(bookAngle)).toFloat()
+                            val bookLabelFontSize = (10f / scale.coerceAtLeast(1f)).coerceIn(8f, 12f)
+                            val halfLabelPx = with(density) { bookLabelMaxWidth.toPx() / 2f }
                             Box(
                                 modifier = Modifier
-                                    .offset(x = with(density) { (bx - 36f).toDp() }, y = with(density) { (by + 11f).toDp() })
+                                    .offset(
+                                        x = with(density) { (bx - halfLabelPx).toDp() },
+                                        y = with(density) { (by + 10f).toDp() }
+                                    )
+                                    .width(bookLabelMaxWidth)
                                     .clickable { onBookClick(bookStatus.book.id) }
                             ) {
                                 Text(
                                     bookStatus.book.title,
                                     color = PaginexNeonTeal.copy(alpha = 0.85f),
-                                    fontSize = (8 / scale.coerceAtLeast(1f)).sp,
-                                    maxLines = 1,
+                                    fontSize = bookLabelFontSize.sp,
+                                    lineHeight = (bookLabelFontSize + 2f).sp,
+                                    maxLines = 3,
                                     overflow = TextOverflow.Ellipsis,
                                     textAlign = TextAlign.Center,
-                                    modifier = Modifier.width(72.dp)
+                                    modifier = Modifier.fillMaxWidth()
                                 )
                             }
                         }
@@ -4701,7 +4710,8 @@ fun ProfileStatItem(label: String, value: String, icon: ImageVector? = null, onC
 fun PublicProfileScreen(
     userId: String,
     onBack: () -> Unit,
-    onBookClick: (String) -> Unit,
+    onGalaxyBookClick: (String) -> Unit,
+    onPostClick: (String) -> Unit,
     onListsClick: () -> Unit,
     onConstellationClick: () -> Unit
 ) {
@@ -4763,7 +4773,7 @@ fun PublicProfileScreen(
                     modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 24.dp),
                     horizontalAlignment = Alignment.CenterHorizontally
                 ) {
-                    UserGalaxy(user = u, rotation = rotation, onBookClick = onBookClick)
+                    UserGalaxy(user = u, rotation = rotation, onBookClick = onGalaxyBookClick)
                     Spacer(modifier = Modifier.height(16.dp))
                     Text(u.fullName, color = PaginexWhite, fontSize = 24.sp, fontWeight = FontWeight.Bold)
                     Text("@${u.username}", color = PaginexWhite.copy(alpha = 0.7f), fontSize = 14.sp)
@@ -4870,7 +4880,7 @@ fun PublicProfileScreen(
                 BookPostCard(
                     post = post,
                     onUserClick = { /* Already here */ },
-                    onBookClick = { onBookClick(post.id) }
+                    onBookClick = { onPostClick(post.id) }
                 )
                 Spacer(modifier = Modifier.height(16.dp))
             }

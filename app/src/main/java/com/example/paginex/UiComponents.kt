@@ -28,6 +28,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
@@ -213,13 +214,17 @@ fun CosmicPlanet(
                 }
             }
         }
+        val titleMaxWidth = (size * 2.6f).coerceIn(96.dp, 280.dp)
         Text(
             text = book.title,
             color = PaginexWhite,
-            fontSize = 12.sp,
+            fontSize = if (size < 72.dp) 10.sp else 12.sp,
             fontWeight = FontWeight.SemiBold,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis
+            maxLines = 2,
+            overflow = TextOverflow.Ellipsis,
+            textAlign = TextAlign.Center,
+            lineHeight = if (size < 72.dp) 12.sp else 14.sp,
+            modifier = Modifier.widthIn(max = titleMaxWidth)
         )
     }
 }
