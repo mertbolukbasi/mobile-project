@@ -198,7 +198,7 @@ fun CommentsSheet(
                         OutlinedTextField(
                             value = commentText,
                             onValueChange = { commentText = it },
-                            placeholder = { Text("Whisper something...", color = Color.Gray, fontSize = 14.sp) },
+                            placeholder = { Text("Whisper something...", color = PaginexWhite.copy(alpha = 0.7f), fontSize = 14.sp) },
                             modifier = Modifier.weight(1f),
                             shape = RoundedCornerShape(24.dp),
                             maxLines = 4,
@@ -247,7 +247,7 @@ fun CommentsSheet(
                                 .size(48.dp)
                                 .background(PaginexNeonPurple, CircleShape)
                         ) {
-                            Icon(Icons.Default.Send, contentDescription = "Send", tint = Color.Black)
+                            Icon(Icons.Default.Send, contentDescription = "Send", tint = PaginexWhite)
                         }
                     }
                 }
@@ -309,7 +309,7 @@ fun CommentItem(
                 Text(
                     text = timeText,
                     fontSize = 10.sp,
-                    color = Color.Gray
+                    color = PaginexWhite.copy(alpha = 0.7f)
                 )
             }
             Text(
@@ -326,7 +326,7 @@ fun CommentItem(
                 Text(
                     text = "Reply",
                     fontSize = 11.sp,
-                    color = Color.Gray,
+                    color = PaginexWhite.copy(alpha = 0.7f),
                     fontWeight = FontWeight.Bold,
                     modifier = Modifier.clickable { onReplyClick() }
                 )
@@ -335,7 +335,7 @@ fun CommentItem(
                     Text(
                         text = "$likeCount likes",
                         fontSize = 11.sp,
-                        color = Color.Gray
+                        color = PaginexWhite.copy(alpha = 0.7f)
                     )
                 }
             }

@@ -66,7 +66,7 @@ fun UserListSheet(
 
             if (users.isEmpty()) {
                 Box(modifier = Modifier.fillMaxSize().padding(16.dp), contentAlignment = Alignment.Center) {
-                    Text("Nobody here yet.", color = Color.Gray, fontSize = 14.sp)
+                    Text("Nobody here yet.", color = PaginexWhite.copy(alpha = 0.7f), fontSize = 14.sp)
                 }
             } else {
                 LazyColumn(
@@ -104,7 +104,7 @@ fun UserListItem(user: FireUser) {
         Spacer(modifier = Modifier.width(16.dp))
         Column(modifier = Modifier.weight(1f)) {
             Text("${user.name} ${user.surname}", color = PaginexWhite, fontWeight = FontWeight.Bold)
-            Text("@${user.username}", color = Color.Gray, fontSize = 12.sp)
+            Text("@${user.username}", color = PaginexWhite.copy(alpha = 0.7f), fontSize = 12.sp)
         }
         Button(
             onClick = { },
@@ -113,7 +113,7 @@ fun UserListItem(user: FireUser) {
             contentPadding = PaddingValues(horizontal = 12.dp, vertical = 0.dp),
             modifier = Modifier.height(32.dp)
         ) {
-            Text("Profil", color = Color.Black, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+            Text("Profil", color = PaginexWhite, fontSize = 11.sp, fontWeight = FontWeight.Bold)
         }
     }
 }
@@ -188,7 +188,7 @@ fun UserLibrarySheet(
 
             if (filteredLibrary.isEmpty()) {
                 Box(modifier = Modifier.fillMaxSize().padding(16.dp), contentAlignment = Alignment.Center) {
-                    Text("No books match this status.", color = Color.Gray, fontSize = 14.sp)
+                    Text("No books match this status.", color = PaginexWhite.copy(alpha = 0.7f), fontSize = 14.sp)
                 }
             } else {
                 LazyColumn(
@@ -252,7 +252,7 @@ fun LibraryBookItem(status: ReadingStatus, isOwner: Boolean = false, onStatusCha
             Spacer(modifier = Modifier.width(16.dp))
             Column(modifier = Modifier.weight(1f).padding(vertical = 8.dp)) {
                 Text(status.book.title, color = PaginexWhite, fontWeight = FontWeight.Bold, fontSize = 16.sp, maxLines = 1)
-                Text(status.book.author, color = Color.Gray, fontSize = 12.sp, maxLines = 1)
+                Text(status.book.author, color = PaginexWhite.copy(alpha = 0.7f), fontSize = 12.sp, maxLines = 1)
                 Spacer(modifier = Modifier.weight(1f))
                 
                 val mappedStatus = when (status.status) {
@@ -275,7 +275,7 @@ fun LibraryBookItem(status: ReadingStatus, isOwner: Boolean = false, onStatusCha
                         Spacer(modifier = Modifier.width(6.dp))
                         Text(
                             "✎",
-                            color = Color.Gray,
+                            color = PaginexWhite.copy(alpha = 0.7f),
                             fontSize = 12.sp,
                             modifier = Modifier.clickable { showDropdown = true }
                         )
@@ -343,7 +343,7 @@ fun LibrarySelectorSheet(
                 value = searchQuery,
                 onValueChange = { searchQuery = it },
                 modifier = Modifier.fillMaxWidth().padding(bottom = 16.dp),
-                placeholder = { Text("Search your bookshelf...", color = Color.Gray) },
+                placeholder = { Text("Search your bookshelf...", color = PaginexWhite.copy(alpha = 0.7f)) },
                 colors = OutlinedTextFieldDefaults.colors(
                     focusedBorderColor = PaginexNeonPurple,
                     unfocusedBorderColor = PaginexGlassBorder,
@@ -355,7 +355,7 @@ fun LibrarySelectorSheet(
 
             if (filteredLibrary.isEmpty()) {
                 Box(modifier = Modifier.fillMaxWidth().weight(1f), contentAlignment = Alignment.Center) {
-                    Text("No books found on your shelf.", color = Color.Gray, fontSize = 14.sp)
+                    Text("No books found on your shelf.", color = PaginexWhite.copy(alpha = 0.7f), fontSize = 14.sp)
                 }
             } else {
                 LazyColumn(
@@ -412,7 +412,7 @@ fun BookListSelectorSheet(
                 value = searchQuery,
                 onValueChange = { searchQuery = it },
                 modifier = Modifier.fillMaxWidth().padding(bottom = 16.dp),
-                placeholder = { Text("Search your lists...", color = Color.Gray) },
+                placeholder = { Text("Search your lists...", color = PaginexWhite.copy(alpha = 0.7f)) },
                 colors = OutlinedTextFieldDefaults.colors(
                     focusedBorderColor = PaginexNeonPurple,
                     unfocusedBorderColor = PaginexGlassBorder,
@@ -424,7 +424,7 @@ fun BookListSelectorSheet(
 
             if (filteredLists.isEmpty()) {
                 Box(modifier = Modifier.fillMaxWidth().weight(1f), contentAlignment = Alignment.Center) {
-                    Text("No book lists found.", color = Color.Gray, fontSize = 14.sp)
+                    Text("No book lists found.", color = PaginexWhite.copy(alpha = 0.7f), fontSize = 14.sp)
                 }
             } else {
                 LazyColumn(

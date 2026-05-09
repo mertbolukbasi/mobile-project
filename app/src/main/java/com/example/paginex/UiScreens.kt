@@ -398,7 +398,7 @@ fun EditFavoritesSheet(
         sheetState = sheetState,
         onDismissRequest = onDismiss,
         containerColor = PaginexSpace,
-        dragHandle = { BottomSheetDefaults.DragHandle(color = Color.Gray) }
+        dragHandle = { BottomSheetDefaults.DragHandle(color = PaginexWhite.copy(alpha = 0.7f)) }
     ) {
         Column(
             modifier = Modifier
@@ -407,14 +407,14 @@ fun EditFavoritesSheet(
                 .padding(horizontal = 16.dp, vertical = 12.dp)
         ) {
             Text("Edit Favorite Books", color = PaginexWhite, fontSize = 20.sp, fontWeight = FontWeight.Bold)
-            Text("Select up to 5 books to show in your galaxy (${selected.size}/5)", color = Color.Gray, fontSize = 14.sp)
+            Text("Select up to 5 books to show in your galaxy (${selected.size}/5)", color = PaginexWhite.copy(alpha = 0.7f), fontSize = 14.sp)
             Spacer(modifier = Modifier.height(16.dp))
 
             OutlinedTextField(
                 value = searchQuery,
                 onValueChange = { searchQuery = it },
                 modifier = Modifier.fillMaxWidth(),
-                placeholder = { Text("Search books...", color = Color.Gray) },
+                placeholder = { Text("Search books...", color = PaginexWhite.copy(alpha = 0.7f)) },
                 colors = OutlinedTextFieldDefaults.colors(
                     focusedBorderColor = PaginexNeonPurple,
                     unfocusedBorderColor = PaginexGlassBorder,
@@ -475,7 +475,7 @@ fun EditFavoritesSheet(
                         .height(48.dp),
                     colors = ButtonDefaults.buttonColors(containerColor = PaginexNeonPurple)
                 ) {
-                    Text("Save", color = Color.Black, fontWeight = FontWeight.Bold)
+                    Text("Save", color = PaginexWhite, fontWeight = FontWeight.Bold)
                 }
             }
         }
@@ -645,7 +645,7 @@ fun LoginScreen(onLogin: () -> Unit, onNavigateToRegister: () -> Unit, onEmailNo
         OutlinedTextField(
             value = email, 
             onValueChange = { email = it }, 
-            label = { Text("Email", color = Color.Gray) }, 
+            label = { Text("Email", color = PaginexWhite.copy(alpha = 0.7f)) }, 
             modifier = Modifier.fillMaxWidth(),
             colors = OutlinedTextFieldDefaults.colors(
                 focusedBorderColor = PaginexNeonPurple, 
@@ -658,7 +658,7 @@ fun LoginScreen(onLogin: () -> Unit, onNavigateToRegister: () -> Unit, onEmailNo
         OutlinedTextField(
             value = password, 
             onValueChange = { password = it }, 
-            label = { Text("Password", color = Color.Gray) }, 
+            label = { Text("Password", color = PaginexWhite.copy(alpha = 0.7f)) }, 
             visualTransformation = androidx.compose.ui.text.input.PasswordVisualTransformation(),
             modifier = Modifier.fillMaxWidth(),
             colors = OutlinedTextFieldDefaults.colors(
@@ -698,14 +698,14 @@ fun LoginScreen(onLogin: () -> Unit, onNavigateToRegister: () -> Unit, onEmailNo
             colors = ButtonDefaults.buttonColors(containerColor = PaginexNeonPurple),
             shape = RoundedCornerShape(28.dp)
         ) {
-            if (isLoading) CircularProgressIndicator(color = Color.Black, modifier = Modifier.size(24.dp))
+            if (isLoading) CircularProgressIndicator(color = PaginexWhite, modifier = Modifier.size(24.dp))
             else Text("LOGIN", fontWeight = FontWeight.Bold)
         }
         
         Spacer(modifier = Modifier.height(32.dp))
         
         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center) {
-            Text("Don't have an account? ", color = Color.Gray)
+            Text("Don't have an account? ", color = PaginexWhite.copy(alpha = 0.7f))
             Text("Sign Up", color = PaginexNeonPurple, fontWeight = FontWeight.Bold, modifier = Modifier.clickable { onNavigateToRegister() })
         }
     }
@@ -722,7 +722,7 @@ fun RegisterScreen(onRegistered: () -> Unit, onBackToLogin: () -> Unit) {
 
     Column(modifier = Modifier.fillMaxSize().background(PaginexSpace).padding(24.dp), verticalArrangement = Arrangement.Center) {
         Text("Join Paginex", fontSize = 32.sp, fontWeight = FontWeight.Bold, color = PaginexWhite)
-        Text("Create your account to get started.", color = Color.Gray, fontSize = 16.sp)
+        Text("Create your account to get started.", color = PaginexWhite.copy(alpha = 0.7f), fontSize = 16.sp)
 
         Spacer(modifier = Modifier.height(32.dp))
 
@@ -733,7 +733,7 @@ fun RegisterScreen(onRegistered: () -> Unit, onBackToLogin: () -> Unit) {
         OutlinedTextField(
             value = email,
             onValueChange = { email = it },
-            label = { Text("Email", color = Color.Gray) },
+            label = { Text("Email", color = PaginexWhite.copy(alpha = 0.7f)) },
             modifier = Modifier.fillMaxWidth(),
             colors = OutlinedTextFieldDefaults.colors(
                 focusedBorderColor = PaginexNeonPurple,
@@ -748,7 +748,7 @@ fun RegisterScreen(onRegistered: () -> Unit, onBackToLogin: () -> Unit) {
         OutlinedTextField(
             value = password,
             onValueChange = { password = it },
-            label = { Text("Password", color = Color.Gray) },
+            label = { Text("Password", color = PaginexWhite.copy(alpha = 0.7f)) },
             visualTransformation = androidx.compose.ui.text.input.PasswordVisualTransformation(),
             modifier = Modifier.fillMaxWidth(),
             colors = OutlinedTextFieldDefaults.colors(
@@ -764,7 +764,7 @@ fun RegisterScreen(onRegistered: () -> Unit, onBackToLogin: () -> Unit) {
         OutlinedTextField(
             value = confirmPassword,
             onValueChange = { confirmPassword = it },
-            label = { Text("Confirm Password", color = Color.Gray) },
+            label = { Text("Confirm Password", color = PaginexWhite.copy(alpha = 0.7f)) },
             visualTransformation = androidx.compose.ui.text.input.PasswordVisualTransformation(),
             modifier = Modifier.fillMaxWidth(),
             colors = OutlinedTextFieldDefaults.colors(
@@ -803,14 +803,14 @@ fun RegisterScreen(onRegistered: () -> Unit, onBackToLogin: () -> Unit) {
             colors = ButtonDefaults.buttonColors(containerColor = PaginexNeonPurple),
             shape = RoundedCornerShape(28.dp)
         ) {
-            if (isLoading) CircularProgressIndicator(color = Color.Black, modifier = Modifier.size(24.dp))
+            if (isLoading) CircularProgressIndicator(color = PaginexWhite, modifier = Modifier.size(24.dp))
             else Text("SIGN UP", fontWeight = FontWeight.Bold)
         }
 
         Spacer(modifier = Modifier.height(32.dp))
 
         TextButton(onClick = onBackToLogin, modifier = Modifier.align(Alignment.CenterHorizontally)) {
-            Text("Back to Login", color = Color.Gray)
+            Text("Back to Login", color = PaginexWhite.copy(alpha = 0.7f))
         }
     }
 }
@@ -847,7 +847,7 @@ fun ProfileSetupScreen(onSetupComplete: () -> Unit) {
             
             Text("Complete Your Profile", fontSize = 28.sp, fontWeight = FontWeight.Bold, color = PaginexWhite)
             Spacer(modifier = Modifier.height(8.dp))
-            Text("Tell us a bit about yourself", color = Color.Gray)
+            Text("Tell us a bit about yourself", color = PaginexWhite.copy(alpha = 0.7f))
             
             Spacer(modifier = Modifier.height(32.dp))
             
@@ -919,9 +919,9 @@ fun ProfileSetupScreen(onSetupComplete: () -> Unit) {
                 enabled = name.isNotBlank() && username.isNotBlank() && !isLoading
             ) { 
                 if (isLoading) {
-                    CircularProgressIndicator(color = Color.Black, modifier = Modifier.size(24.dp))
+                    CircularProgressIndicator(color = PaginexWhite, modifier = Modifier.size(24.dp))
                 } else {
-                    Text("COMPLETE SETUP", fontWeight = FontWeight.ExtraBold, letterSpacing = 1.sp, color = Color.Black) 
+                    Text("COMPLETE SETUP", fontWeight = FontWeight.ExtraBold, letterSpacing = 1.sp, color = PaginexWhite) 
                 }
             }
         }
@@ -956,7 +956,7 @@ fun VerifyEmailScreen(onVerified: () -> Unit, onBackToLogin: () -> Unit) {
         Text(
             "We sent a verification email to $userEmail. Please click the link in the email, then tap the button below.",
             textAlign = TextAlign.Center,
-            color = Color.Gray
+            color = PaginexWhite.copy(alpha = 0.7f)
         )
 
         if (message != null) {
@@ -986,7 +986,7 @@ fun VerifyEmailScreen(onVerified: () -> Unit, onBackToLogin: () -> Unit) {
             colors = ButtonDefaults.buttonColors(containerColor = PaginexNeonPurple),
             shape = RoundedCornerShape(28.dp)
         ) {
-            if (isChecking) CircularProgressIndicator(color = Color.Black, modifier = Modifier.size(24.dp))
+            if (isChecking) CircularProgressIndicator(color = PaginexWhite, modifier = Modifier.size(24.dp))
             else Text("I'VE VERIFIED MY EMAIL", fontWeight = FontWeight.Bold)
         }
 
@@ -1011,7 +1011,7 @@ fun VerifyEmailScreen(onVerified: () -> Unit, onBackToLogin: () -> Unit) {
         Spacer(modifier = Modifier.height(16.dp))
 
         TextButton(onClick = onBackToLogin) {
-            Text("Back to Login", color = Color.Gray)
+            Text("Back to Login", color = PaginexWhite.copy(alpha = 0.7f))
         }
     }
 }
@@ -1307,7 +1307,7 @@ fun ExploreScreen(onBookClick: (String) -> Unit = {}) {
                     onValueChange = { searchQuery = it },
                     modifier = Modifier.fillMaxWidth(),
                     singleLine = true,
-                    placeholder = { Text("Search in stardust...", color = Color.Gray, fontSize = 14.sp) },
+                    placeholder = { Text("Search in stardust...", color = PaginexWhite.copy(alpha = 0.7f), fontSize = 14.sp) },
                     leadingIcon = { Icon(Icons.Default.Search, null, tint = PaginexWhite.copy(alpha = 0.5f), modifier = Modifier.size(20.dp)) },
                     shape = RoundedCornerShape(12.dp),
                     colors = OutlinedTextFieldDefaults.colors(
@@ -1432,7 +1432,7 @@ fun ExploreScreen(onBookClick: (String) -> Unit = {}) {
             ) {
                 if (filteredUsers.isEmpty()) {
                     item {
-                        Text("No users found.", color = Color.Gray, modifier = Modifier.padding(16.dp))
+                        Text("No users found.", color = PaginexWhite.copy(alpha = 0.7f), modifier = Modifier.padding(16.dp))
                     }
                 }
                 items(filteredUsers, key = { it.id }) { user ->
@@ -1454,7 +1454,7 @@ fun ExploreScreen(onBookClick: (String) -> Unit = {}) {
                         Spacer(modifier = Modifier.width(16.dp))
                         Column {
                             Text(user.fullName, color = PaginexWhite, fontWeight = FontWeight.Bold, fontSize = 16.sp)
-                            Text("@${user.username}", color = Color.Gray, fontSize = 14.sp)
+                            Text("@${user.username}", color = PaginexWhite.copy(alpha = 0.7f), fontSize = 14.sp)
                         }
                     }
                 }
@@ -1523,15 +1523,15 @@ fun BookDetailScreen(
             
             // New fields: Publish Year, ISBN and Average Rating
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Icon(Icons.Default.DateRange, contentDescription = null, tint = Color.Gray, modifier = Modifier.size(16.dp))
+                Icon(Icons.Default.DateRange, contentDescription = null, tint = PaginexWhite.copy(alpha = 0.7f), modifier = Modifier.size(16.dp))
                 Spacer(modifier = Modifier.width(4.dp))
-                Text("Year: ${book.publishYear}", color = Color.Gray, fontSize = 14.sp)
+                Text("Year: ${book.publishYear}", color = PaginexWhite.copy(alpha = 0.7f), fontSize = 14.sp)
                 
                 Spacer(modifier = Modifier.width(16.dp))
                 
-                Icon(Icons.Default.Info, contentDescription = null, tint = Color.Gray, modifier = Modifier.size(16.dp))
+                Icon(Icons.Default.Info, contentDescription = null, tint = PaginexWhite.copy(alpha = 0.7f), modifier = Modifier.size(16.dp))
                 Spacer(modifier = Modifier.width(4.dp))
-                Text("ISBN: ${if (book.isbn.isNotEmpty()) book.isbn else "000-0000000000"}", color = Color.Gray, fontSize = 14.sp)
+                Text("ISBN: ${if (book.isbn.isNotEmpty()) book.isbn else "000-0000000000"}", color = PaginexWhite.copy(alpha = 0.7f), fontSize = 14.sp)
             }
             
             Spacer(modifier = Modifier.height(8.dp))
@@ -1684,6 +1684,16 @@ fun BookDetailScreen(
 }
 
 @Composable
+fun readingStatusColor(status: String): Color = when (status) {
+    "Reading" -> PaginexNeonPurple
+    "Plan To Read" -> PaginexNeonPink
+    "Completed" -> PaginexNeonTeal
+    "On-hold" -> Color(0xFFD97706)
+    "Dropped" -> Color(0xFFEF4444)
+    else -> PaginexWhite.copy(alpha = 0.7f)
+}
+
+@Composable
 fun PaginexProfileScreen(
     onEditClick: () -> Unit, // This will now go to SettingsScreen
     onListsClick: () -> Unit,
@@ -1716,7 +1726,7 @@ fun PaginexProfileScreen(
         AlertDialog(
             onDismissRequest = { showLogoutDialog = false },
             title = { Text("Log Out", color = PaginexWhite, fontWeight = FontWeight.Bold) },
-            text = { Text("Profilden çıkmaktan emin misiniz?", color = Color.Gray) },
+            text = { Text("Profilden çıkmaktan emin misiniz?", color = PaginexWhite.copy(alpha = 0.7f)) },
             containerColor = PaginexGalaxy,
             shape = RoundedCornerShape(20.dp),
             confirmButton = {
@@ -1807,8 +1817,8 @@ fun PaginexProfileScreen(
 
             // Join Date
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.Center) {
-                Icon(Icons.Default.DateRange, null, tint = Color.Gray, modifier = Modifier.size(14.dp))
-                Text(" ${user.joinDate}", color = Color.Gray, fontSize = 12.sp)
+                Icon(Icons.Default.DateRange, null, tint = PaginexWhite.copy(alpha = 0.7f), modifier = Modifier.size(14.dp))
+                Text(" ${user.joinDate}", color = PaginexWhite.copy(alpha = 0.7f), fontSize = 12.sp)
             }
 
             Spacer(modifier = Modifier.height(16.dp))
@@ -1827,21 +1837,21 @@ fun PaginexProfileScreen(
                     modifier = Modifier.clickable { showLibrary = true }
                 ) {
                     Text("${MockData.readingStatuses.count { it.userId == user.id }}", fontWeight = FontWeight.ExtraBold, color = PaginexNeonTeal, fontSize = 20.sp)
-                    Text("Books", fontSize = 11.sp, color = Color.Gray)
+                    Text("Books", fontSize = 11.sp, color = PaginexWhite.copy(alpha = 0.7f))
                 }
                 Column(
                     horizontalAlignment = Alignment.CenterHorizontally,
                     modifier = Modifier.clickable { showFollowers = true }
                 ) {
                     Text("${user.followersCount}", fontWeight = FontWeight.ExtraBold, color = PaginexWhite, fontSize = 20.sp)
-                    Text("Followers", fontSize = 11.sp, color = Color.Gray)
+                    Text("Followers", fontSize = 11.sp, color = PaginexWhite.copy(alpha = 0.7f))
                 }
                 Column(
                     horizontalAlignment = Alignment.CenterHorizontally,
                     modifier = Modifier.clickable { showFollowing = true }
                 ) {
                     Text("${user.followingCount}", fontWeight = FontWeight.ExtraBold, color = PaginexWhite, fontSize = 20.sp)
-                    Text("Following", fontSize = 11.sp, color = Color.Gray)
+                    Text("Following", fontSize = 11.sp, color = PaginexWhite.copy(alpha = 0.7f))
                 }
             }
 
@@ -1871,9 +1881,9 @@ fun PaginexProfileScreen(
                     colors = ButtonDefaults.buttonColors(containerColor = PaginexNeonPurple),
                     contentPadding = PaddingValues(0.dp)
                 ) {
-                    Icon(Icons.Default.Add, null, tint = Color.Black, modifier = Modifier.size(14.dp))
+                    Icon(Icons.Default.Add, null, tint = PaginexWhite, modifier = Modifier.size(14.dp))
                     Spacer(modifier = Modifier.width(4.dp))
-                    Text("Add Book", color = Color.Black, fontWeight = FontWeight.Bold, fontSize = 11.sp)
+                    Text("Add Book", color = PaginexWhite, fontWeight = FontWeight.Bold, fontSize = 11.sp)
                 }
                 // Book Lists Button
                 OutlinedButton(
@@ -1919,13 +1929,7 @@ fun PaginexProfileScreen(
             ) {
                 availableStatuses.forEach { status ->
                     val isSelected = selectedFilterStatus == status
-                    val color = when (status) {
-                        "Reading" -> PaginexNeonPurple
-                        "Plan To Read" -> PaginexOrbit
-                        "Completed" -> PaginexNeonTeal
-                        "On-hold" -> Color(0xFFD97706)
-                        else -> Color.Gray
-                    }
+                    val color = readingStatusColor(status)
                     Tab(
                         selected = isSelected,
                         onClick = { selectedFilterStatus = status },
@@ -1938,7 +1942,12 @@ fun PaginexProfileScreen(
                                 .border(1.dp, if (isSelected) color else PaginexGlassBorder, RoundedCornerShape(20.dp))
                                 .padding(horizontal = 16.dp, vertical = 8.dp)
                         ) {
-                            Text(status, color = if (isSelected) color else Color.Gray, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                            Text(
+                                status,
+                                color = if (isSelected) color else PaginexWhite.copy(alpha = 0.7f),
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Bold
+                            )
                         }
                     }
                 }
@@ -1947,13 +1956,7 @@ fun PaginexProfileScreen(
             Spacer(modifier = Modifier.height(12.dp))
 
             if (filteredLibrary.isNotEmpty()) {
-                val color = when (selectedFilterStatus) {
-                    "Reading" -> PaginexNeonPurple
-                    "Plan To Read" -> PaginexOrbit
-                    "Completed" -> PaginexNeonTeal
-                    "On-hold" -> Color(0xFFD97706)
-                    else -> Color.Gray
-                }
+                val color = readingStatusColor(selectedFilterStatus)
                 Card(
                     modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp),
                     colors = CardDefaults.cardColors(containerColor = color.copy(alpha = 0.08f)),
@@ -1997,7 +2000,7 @@ fun PaginexProfileScreen(
                                 Spacer(modifier = Modifier.width(12.dp))
                                 Column {
                                     Text(rs.book.title, color = PaginexWhite, fontWeight = FontWeight.Bold, fontSize = 14.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                                    Text(rs.book.author, color = Color.Gray, fontSize = 12.sp)
+                                    Text(rs.book.author, color = PaginexWhite.copy(alpha = 0.7f), fontSize = 12.sp)
                                     Text(rs.book.genre, color = PaginexNeonPurple.copy(alpha = 0.7f), fontSize = 11.sp)
                                 }
                             }
@@ -2055,7 +2058,7 @@ fun PaginexProfileScreen(
                                 Column(modifier = Modifier.weight(1f)) {
                                     Text(post.book.title, color = PaginexWhite, fontWeight = FontWeight.Bold, fontSize = 13.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
                                     if (post.review.isNotEmpty()) {
-                                        Text(post.review, color = Color.Gray, fontSize = 11.sp, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                                        Text(post.review, color = PaginexWhite.copy(alpha = 0.7f), fontSize = 11.sp, maxLines = 2, overflow = TextOverflow.Ellipsis)
                                     }
                                 }
                                 if (post.rating > 0f) {
@@ -2226,9 +2229,9 @@ fun EditProfileScreen(onSave: () -> Unit) {
                 elevation = ButtonDefaults.buttonElevation(defaultElevation = 0.dp)
             ) { 
                 if (isLoading) {
-                    CircularProgressIndicator(color = Color.Black, modifier = Modifier.size(24.dp))
+                    CircularProgressIndicator(color = PaginexWhite, modifier = Modifier.size(24.dp))
                 } else {
-                    Text("Save", fontWeight = FontWeight.ExtraBold, letterSpacing = 1.sp, color = Color.Black) 
+                    Text("Save", fontWeight = FontWeight.ExtraBold, letterSpacing = 1.sp, color = PaginexWhite) 
                 }
             }
         }
@@ -2258,7 +2261,7 @@ fun CosmicInputField(label: String, value: String, onValueChange: (String) -> Un
                     focusedBorderColor = Color.Transparent,
                     focusedTextColor = PaginexWhite,
                     unfocusedTextColor = PaginexWhite,
-                    disabledTextColor = Color.Gray,
+                    disabledTextColor = PaginexWhite.copy(alpha = 0.5f),
                     disabledContainerColor = Color.Transparent,
                     disabledBorderColor = Color.Transparent,
                 ),
@@ -2289,8 +2292,8 @@ fun SavedPostsScreen(onBookClick: (String) -> Unit = {}) {
                 value = searchQuery,
                 onValueChange = { searchQuery = it },
                 modifier = Modifier.weight(1f),
-                placeholder = { Text("Search book...", color = Color.Gray) },
-                leadingIcon = { Icon(Icons.Default.Search, null, tint = Color.Gray) },
+                placeholder = { Text("Search book...", color = PaginexWhite.copy(alpha = 0.7f)) },
+                leadingIcon = { Icon(Icons.Default.Search, null, tint = PaginexWhite.copy(alpha = 0.7f)) },
                 colors = OutlinedTextFieldDefaults.colors(
                     focusedBorderColor = PaginexNeonPurple,
                     unfocusedBorderColor = PaginexGlassBorder,
@@ -2415,7 +2418,7 @@ fun BookListsScreen(targetUserId: String, onBack: () -> Unit) {
             Box(modifier = Modifier.fillMaxSize().padding(padding), contentAlignment = Alignment.Center) {
                 Text(
                     text = if (selectedTab == 0) "No lists found." else "No saved lists found.",
-                    color = Color.Gray
+                    color = PaginexWhite.copy(alpha = 0.7f)
                 )
             }
         } else {
@@ -2575,13 +2578,13 @@ fun BookListDetailsDialog(
             Column {
                 Text(bookList.name, color = PaginexWhite, fontWeight = FontWeight.Bold, fontSize = 20.sp)
                 if (bookList.description.isNotEmpty()) {
-                    Text(bookList.description, color = Color.Gray, fontSize = 14.sp)
+                    Text(bookList.description, color = PaginexWhite.copy(alpha = 0.7f), fontSize = 14.sp)
                 }
             }
         },
         text = {
             if (bookList.books.isEmpty()) {
-                Text("No books in this list.", color = Color.Gray)
+                Text("No books in this list.", color = PaginexWhite.copy(alpha = 0.7f))
             } else {
                 LazyVerticalGrid(
                     columns = GridCells.Fixed(3),
@@ -2641,7 +2644,7 @@ fun BookListDetailsDialog(
         },
         confirmButton = {},
         dismissButton = {
-            TextButton(onClick = onDismiss) { Text("Close", color = Color.Gray, fontWeight = FontWeight.Bold) }
+            TextButton(onClick = onDismiss) { Text("Close", color = PaginexWhite.copy(alpha = 0.7f), fontWeight = FontWeight.Bold) }
         }
     )
 }
@@ -2662,7 +2665,7 @@ fun EditBookListDialog(bookList: BookList, onDismiss: () -> Unit, onSave: (Strin
                 OutlinedTextField(
                     value = name,
                     onValueChange = { name = it },
-                    label = { Text("List name", color = Color.Gray) },
+                    label = { Text("List name", color = PaginexWhite.copy(alpha = 0.7f)) },
                     modifier = Modifier.fillMaxWidth(),
                     colors = OutlinedTextFieldDefaults.colors(
                         focusedBorderColor = PaginexNeonPurple,
@@ -2675,7 +2678,7 @@ fun EditBookListDialog(bookList: BookList, onDismiss: () -> Unit, onSave: (Strin
                 OutlinedTextField(
                     value = description,
                     onValueChange = { description = it },
-                    label = { Text("Description (optional)", color = Color.Gray) },
+                    label = { Text("Description (optional)", color = PaginexWhite.copy(alpha = 0.7f)) },
                     modifier = Modifier.fillMaxWidth(),
                     colors = OutlinedTextFieldDefaults.colors(
                         focusedBorderColor = PaginexNeonPurple,
@@ -2700,11 +2703,11 @@ fun EditBookListDialog(bookList: BookList, onDismiss: () -> Unit, onSave: (Strin
                 onClick = { if (name.isNotBlank()) onSave(name, description, isPrivate) },
                 colors = ButtonDefaults.buttonColors(containerColor = PaginexNeonPurple)
             ) {
-                Text("Save", color = Color.Black, fontWeight = FontWeight.Bold)
+                Text("Save", color = PaginexWhite, fontWeight = FontWeight.Bold)
             }
         },
         dismissButton = {
-            TextButton(onClick = onDismiss) { Text("Cancel", color = Color.Gray) }
+            TextButton(onClick = onDismiss) { Text("Cancel", color = PaginexWhite.copy(alpha = 0.7f)) }
         }
     )
 }
@@ -2766,12 +2769,12 @@ fun BookListCard(
                         Icon(
                             imageVector = if (bookList.isPrivate) Icons.Default.Lock else Icons.Default.Public,
                             contentDescription = null,
-                            tint = Color.Gray,
+                            tint = PaginexWhite.copy(alpha = 0.7f),
                             modifier = Modifier.size(14.dp)
                         )
                     }
                     if (bookList.description.isNotEmpty()) {
-                        Text(bookList.description, fontSize = 12.sp, color = Color.Gray, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        Text(bookList.description, fontSize = 12.sp, color = PaginexWhite.copy(alpha = 0.7f), maxLines = 1, overflow = TextOverflow.Ellipsis)
                     }
                     Text("${bookList.books.size} books", fontSize = 12.sp, color = PaginexNeonPurple.copy(alpha = 0.8f))
                 }
@@ -2782,7 +2785,7 @@ fun BookListCard(
                     }
                     Box {
                         IconButton(onClick = { menuExpanded = true }) {
-                            Icon(Icons.Default.MoreVert, null, tint = Color.Gray)
+                            Icon(Icons.Default.MoreVert, null, tint = PaginexWhite.copy(alpha = 0.7f))
                         }
                         DropdownMenu(
                             expanded = menuExpanded,
@@ -2848,7 +2851,7 @@ fun CreateBookListDialog(onDismiss: () -> Unit, onCreate: (String, String, Boole
                 OutlinedTextField(
                     value = name,
                     onValueChange = { name = it },
-                    label = { Text("List name", color = Color.Gray) },
+                    label = { Text("List name", color = PaginexWhite.copy(alpha = 0.7f)) },
                     modifier = Modifier.fillMaxWidth(),
                     colors = OutlinedTextFieldDefaults.colors(
                         focusedBorderColor = PaginexNeonPurple,
@@ -2861,7 +2864,7 @@ fun CreateBookListDialog(onDismiss: () -> Unit, onCreate: (String, String, Boole
                 OutlinedTextField(
                     value = description,
                     onValueChange = { description = it },
-                    label = { Text("Description (optional)", color = Color.Gray) },
+                    label = { Text("Description (optional)", color = PaginexWhite.copy(alpha = 0.7f)) },
                     modifier = Modifier.fillMaxWidth(),
                     colors = OutlinedTextFieldDefaults.colors(
                         focusedBorderColor = PaginexNeonPurple,
@@ -2886,11 +2889,11 @@ fun CreateBookListDialog(onDismiss: () -> Unit, onCreate: (String, String, Boole
                 onClick = { if (name.isNotBlank()) onCreate(name, description, isPrivate) },
                 colors = ButtonDefaults.buttonColors(containerColor = PaginexNeonPurple)
             ) {
-                Text("Create", color = Color.Black, fontWeight = FontWeight.Bold)
+                Text("Create", color = PaginexWhite, fontWeight = FontWeight.Bold)
             }
         },
         dismissButton = {
-            TextButton(onClick = onDismiss) { Text("Cancel", color = Color.Gray) }
+            TextButton(onClick = onDismiss) { Text("Cancel", color = PaginexWhite.copy(alpha = 0.7f)) }
         }
     )
 }
@@ -2932,7 +2935,7 @@ fun AddBookToListDialog(bookList: BookList, onDismiss: () -> Unit, onBookAdded: 
                         Spacer(modifier = Modifier.width(10.dp))
                         Column {
                             Text(book.title, color = PaginexWhite, fontWeight = FontWeight.Bold, fontSize = 14.sp)
-                            Text(book.author, color = Color.Gray, fontSize = 12.sp)
+                            Text(book.author, color = PaginexWhite.copy(alpha = 0.7f), fontSize = 12.sp)
                             Text(book.genre, color = PaginexNeonTeal.copy(alpha = 0.8f), fontSize = 11.sp)
                         }
                     }
@@ -2941,7 +2944,7 @@ fun AddBookToListDialog(bookList: BookList, onDismiss: () -> Unit, onBookAdded: 
         },
         confirmButton = {},
         dismissButton = {
-            TextButton(onClick = onDismiss) { Text("Close", color = Color.Gray) }
+            TextButton(onClick = onDismiss) { Text("Close", color = PaginexWhite.copy(alpha = 0.7f)) }
         }
     )
 }
@@ -2960,18 +2963,11 @@ fun AddBookToLibraryDialog(onDismiss: () -> Unit, onBookAdded: (Book, String) ->
         title = { Text("Add Book to Library", color = PaginexWhite, fontWeight = FontWeight.Bold) },
         text = {
             Column {
-                Text("Select status:", color = Color.Gray, fontSize = 12.sp)
+                Text("Select status:", color = PaginexWhite.copy(alpha = 0.7f), fontSize = 12.sp)
                 Spacer(modifier = Modifier.height(8.dp))
                 LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     items(statuses) { s ->
-                        val color = when(s) {
-                            "Completed" -> PaginexNeonTeal
-                            "Reading" -> PaginexNeonPurple
-                            "Plan To Read" -> PaginexOrbit
-                            "Dropped" -> PaginexNeonPink
-                            "On-hold" -> Color(0xFFD97706)
-                            else -> PaginexWhite.copy(alpha = 0.6f)
-                        }
+                        val color = readingStatusColor(s)
                         Surface(
                             onClick = { selectedStatus = s },
                             shape = RoundedCornerShape(20.dp),
@@ -2979,7 +2975,10 @@ fun AddBookToLibraryDialog(onDismiss: () -> Unit, onBookAdded: (Book, String) ->
                             border = BorderStroke(1.dp, if (selectedStatus == s) color else PaginexGlassBorder)
                         ) {
                             Text(s, modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp),
-                                color = if (selectedStatus == s) color else Color.Gray, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                                color = if (selectedStatus == s) color else PaginexWhite.copy(alpha = 0.7f),
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Bold
+                            )
                         }
                     }
                 }
@@ -2989,7 +2988,7 @@ fun AddBookToLibraryDialog(onDismiss: () -> Unit, onBookAdded: (Book, String) ->
                     value = searchQuery,
                     onValueChange = { searchQuery = it },
                     modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp),
-                    placeholder = { Text("Search...", color = Color.Gray) },
+                    placeholder = { Text("Search...", color = PaginexWhite.copy(alpha = 0.7f)) },
                     colors = OutlinedTextFieldDefaults.colors(
                         focusedBorderColor = PaginexNeonPurple,
                         unfocusedBorderColor = PaginexGlassBorder,
@@ -2999,7 +2998,7 @@ fun AddBookToLibraryDialog(onDismiss: () -> Unit, onBookAdded: (Book, String) ->
                     shape = RoundedCornerShape(12.dp)
                 )
 
-                Text("Select book:", color = Color.Gray, fontSize = 12.sp)
+                Text("Select book:", color = PaginexWhite.copy(alpha = 0.7f), fontSize = 12.sp)
                 Spacer(modifier = Modifier.height(8.dp))
                 LazyColumn(modifier = Modifier.height(200.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     val currentUid = AuthService.getUid()
@@ -3026,7 +3025,7 @@ fun AddBookToLibraryDialog(onDismiss: () -> Unit, onBookAdded: (Book, String) ->
                             Spacer(modifier = Modifier.width(10.dp))
                             Column {
                                 Text(book.title, color = PaginexWhite, fontWeight = FontWeight.Bold, fontSize = 13.sp)
-                                Text(book.author, color = Color.Gray, fontSize = 11.sp)
+                                Text(book.author, color = PaginexWhite.copy(alpha = 0.7f), fontSize = 11.sp)
                             }
                         }
                     }
@@ -3040,11 +3039,11 @@ fun AddBookToLibraryDialog(onDismiss: () -> Unit, onBookAdded: (Book, String) ->
                 colors = ButtonDefaults.buttonColors(containerColor = PaginexNeonPurple),
                 shape = RoundedCornerShape(12.dp)
             ) {
-                Text("Tamam", color = Color.Black, fontWeight = FontWeight.Bold)
+                Text("Tamam", color = PaginexWhite, fontWeight = FontWeight.Bold)
             }
         },
         dismissButton = {
-            TextButton(onClick = onDismiss) { Text("Close", color = Color.Gray) }
+            TextButton(onClick = onDismiss) { Text("Close", color = PaginexWhite.copy(alpha = 0.7f)) }
         }
     )
 }
@@ -3316,13 +3315,13 @@ fun ConstellationScreen(targetUserId: String, onBack: () -> Unit, onBookClick: (
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Box(modifier = Modifier.size(10.dp).background(Color(0xFFFFD700), CircleShape))
                     Spacer(modifier = Modifier.width(6.dp))
-                    Text("Profile / Genre", color = Color.Gray, fontSize = 10.sp)
+                    Text("Profile / Genre", color = PaginexWhite.copy(alpha = 0.7f), fontSize = 10.sp)
                 }
                 Spacer(modifier = Modifier.height(4.dp))
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Box(modifier = Modifier.size(8.dp).background(PaginexNeonTeal, CircleShape))
                     Spacer(modifier = Modifier.width(6.dp))
-                    Text("Book", color = Color.Gray, fontSize = 10.sp)
+                    Text("Book", color = PaginexWhite.copy(alpha = 0.7f), fontSize = 10.sp)
                 }
             }
 
@@ -3674,7 +3673,7 @@ fun CreatePostScreen(initialPostId: String? = null, onPost: () -> Unit, onDrafts
                                 Spacer(modifier = Modifier.width(20.dp))
                                 Column {
                                     Text(selectedBook!!.title, color = PaginexWhite, fontSize = 18.sp, fontWeight = FontWeight.Bold)
-                                    Text(selectedBook!!.author, color = Color.Gray, fontSize = 14.sp)
+                                    Text(selectedBook!!.author, color = PaginexWhite.copy(alpha = 0.7f), fontSize = 14.sp)
                                     Spacer(modifier = Modifier.height(8.dp))
                                     Text("SELECTED BOOK", color = PaginexNeonTeal, fontSize = 10.sp, fontWeight = FontWeight.Black, letterSpacing = 2.sp)
                                 }
@@ -3694,7 +3693,7 @@ fun CreatePostScreen(initialPostId: String? = null, onPost: () -> Unit, onDrafts
                                 Spacer(modifier = Modifier.width(20.dp))
                                 Column {
                                     Text(selectedBookList!!.name, color = PaginexWhite, fontSize = 18.sp, fontWeight = FontWeight.Bold)
-                                    Text("${selectedBookList!!.books.size} books", color = Color.Gray, fontSize = 14.sp)
+                                    Text("${selectedBookList!!.books.size} books", color = PaginexWhite.copy(alpha = 0.7f), fontSize = 14.sp)
                                     Spacer(modifier = Modifier.height(8.dp))
                                     Text("SELECTED LIST", color = PaginexNeonTeal, fontSize = 10.sp, fontWeight = FontWeight.Black, letterSpacing = 2.sp)
                                 }
@@ -3730,7 +3729,7 @@ fun CreatePostScreen(initialPostId: String? = null, onPost: () -> Unit, onDrafts
                                 modifier = Modifier.fillMaxWidth().height(160.dp),
                                 textStyle = androidx.compose.ui.text.TextStyle(color = PaginexWhite, fontSize = 16.sp),
                                 decorationBox = { innerTextField ->
-                                    if (reviewText.isEmpty()) Text("Let your thoughts flow like stars...", color = Color.Gray)
+                                    if (reviewText.isEmpty()) Text("Let your thoughts flow like stars...", color = PaginexWhite.copy(alpha = 0.7f))
                                     innerTextField()
                                 }
                             )
@@ -3893,7 +3892,7 @@ fun CreatePostScreen(initialPostId: String? = null, onPost: () -> Unit, onDrafts
                 onDismissRequest = { showPublishDialog = false },
                 containerColor = PaginexGalaxy,
                 title = { Text("Publish post?", color = PaginexWhite) },
-                text = { Text("Are you sure you want to publish?", color = Color.Gray) },
+                text = { Text("Are you sure you want to publish?", color = PaginexWhite.copy(alpha = 0.7f)) },
                 confirmButton = {
                     Button(
                         onClick = { 
@@ -3939,7 +3938,7 @@ fun CreatePostScreen(initialPostId: String? = null, onPost: () -> Unit, onDrafts
                             undoTimer = 5 
                         },
                         colors = ButtonDefaults.buttonColors(containerColor = PaginexNeonPurple)
-                    ) { Text("Publish", color = Color.Black) }
+                    ) { Text("Publish", color = PaginexWhite) }
                 },
                 dismissButton = {
                     OutlinedButton(
@@ -4147,7 +4146,7 @@ fun DraftsScreen(onBack: () -> Unit, onEditDraft: (String) -> Unit = {}) {
         val drafts = MockData.drafts
         if (drafts.isEmpty()) {
             Box(modifier = Modifier.fillMaxSize().padding(padding), contentAlignment = Alignment.Center) {
-                Text("You don't have any saved drafts yet.", color = Color.Gray, fontSize = 16.sp)
+                Text("You don't have any saved drafts yet.", color = PaginexWhite.copy(alpha = 0.7f), fontSize = 16.sp)
             }
         } else {
             LazyColumn(modifier = Modifier.fillMaxSize().padding(padding), contentPadding = PaddingValues(16.dp)) {
@@ -4169,7 +4168,7 @@ fun DraftsScreen(onBack: () -> Unit, onEditDraft: (String) -> Unit = {}) {
                                 Spacer(modifier = Modifier.width(12.dp))
                                 Column(modifier = Modifier.weight(1f)) {
                                     Text(draft.book.title, color = PaginexWhite, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                                    Text(draft.book.author, color = Color.Gray, fontSize = 12.sp)
+                                    Text(draft.book.author, color = PaginexWhite.copy(alpha = 0.7f), fontSize = 12.sp)
                                     Spacer(modifier = Modifier.height(4.dp))
                                     Row(verticalAlignment = Alignment.CenterVertically) {
                                         Icon(Icons.Default.Star, null, tint = Color(0xFFFFD700), modifier = Modifier.size(12.dp))
@@ -4220,7 +4219,7 @@ fun DraftsScreen(onBack: () -> Unit, onEditDraft: (String) -> Unit = {}) {
                                     },
                                     colors = ButtonDefaults.buttonColors(containerColor = PaginexNeonPurple)
                                 ) {
-                                    Text("Publish", color = Color.Black)
+                                    Text("Publish", color = PaginexWhite)
                                 }
                             }
                         }
@@ -4280,7 +4279,7 @@ fun SettingsScreen(
                 Spacer(modifier = Modifier.width(16.dp))
                 Column {
                     Text(user.fullName, color = PaginexWhite, fontWeight = FontWeight.Bold, fontSize = 22.sp)
-                    Text("@${user.username}", color = Color.Gray, fontSize = 14.sp)
+                    Text("@${user.username}", color = PaginexWhite.copy(alpha = 0.7f), fontSize = 14.sp)
                 }
             }
 
@@ -4289,7 +4288,7 @@ fun SettingsScreen(
             // Account settings list
             Text(
                 "Account settings",
-                color = Color.Gray,
+                color = PaginexWhite.copy(alpha = 0.7f),
                 fontSize = 12.sp,
                 fontWeight = FontWeight.Bold,
                 letterSpacing = 1.sp,
@@ -4306,7 +4305,7 @@ fun SettingsScreen(
                 Icon(Icons.Default.Person, null, tint = PaginexNeonTeal, modifier = Modifier.size(24.dp))
                 Spacer(modifier = Modifier.width(16.dp))
                 Text("Personal information", color = PaginexWhite, fontSize = 16.sp, modifier = Modifier.weight(1f))
-                Icon(Icons.Default.KeyboardArrowRight, null, tint = Color.Gray)
+                Icon(Icons.Default.KeyboardArrowRight, null, tint = PaginexWhite.copy(alpha = 0.7f))
             }
             Divider(color = PaginexGlassBorder, thickness = 0.5.dp, modifier = Modifier.padding(horizontal = 24.dp))
             
@@ -4321,7 +4320,7 @@ fun SettingsScreen(
                 Icon(Icons.Default.Lock, null, tint = PaginexNeonPurple, modifier = Modifier.size(24.dp))
                 Spacer(modifier = Modifier.width(16.dp))
                 Text("Password", color = PaginexWhite, fontSize = 16.sp, modifier = Modifier.weight(1f))
-                Icon(Icons.Default.KeyboardArrowRight, null, tint = Color.Gray)
+                Icon(Icons.Default.KeyboardArrowRight, null, tint = PaginexWhite.copy(alpha = 0.7f))
             }
             Divider(color = PaginexGlassBorder, thickness = 0.5.dp, modifier = Modifier.padding(horizontal = 24.dp))
 
@@ -4344,7 +4343,7 @@ fun SettingsScreen(
                             OutlinedTextField(
                                 value = oldPassword,
                                 onValueChange = { oldPassword = it },
-                                label = { Text("Current Password", color = Color.Gray) },
+                                label = { Text("Current Password", color = PaginexWhite.copy(alpha = 0.7f)) },
                                 visualTransformation = androidx.compose.ui.text.input.PasswordVisualTransformation(),
                                 colors = OutlinedTextFieldDefaults.colors(
                                     focusedBorderColor = PaginexNeonPurple,
@@ -4357,7 +4356,7 @@ fun SettingsScreen(
                             OutlinedTextField(
                                 value = newPassword,
                                 onValueChange = { newPassword = it },
-                                label = { Text("New Password", color = Color.Gray) },
+                                label = { Text("New Password", color = PaginexWhite.copy(alpha = 0.7f)) },
                                 visualTransformation = androidx.compose.ui.text.input.PasswordVisualTransformation(),
                                 colors = OutlinedTextFieldDefaults.colors(
                                     focusedBorderColor = PaginexNeonPurple,
@@ -4393,13 +4392,13 @@ fun SettingsScreen(
                             },
                             colors = ButtonDefaults.buttonColors(containerColor = PaginexNeonPurple)
                         ) {
-                            if (isLoading) CircularProgressIndicator(color = Color.Black, modifier = Modifier.size(16.dp))
-                            else Text("Save", color = Color.Black, fontWeight = FontWeight.Bold)
+                            if (isLoading) CircularProgressIndicator(color = PaginexWhite, modifier = Modifier.size(16.dp))
+                            else Text("Save", color = PaginexWhite, fontWeight = FontWeight.Bold)
                         }
                     },
                     dismissButton = {
                         TextButton(onClick = { showPasswordDialog = false }, enabled = !isLoading) {
-                            Text("Cancel", color = Color.Gray)
+                            Text("Cancel", color = PaginexWhite.copy(alpha = 0.7f))
                         }
                     }
                 )
@@ -4416,7 +4415,7 @@ fun SettingsScreen(
                 Icon(Icons.Default.Delete, null, tint = Color.Red, modifier = Modifier.size(24.dp))
                 Spacer(modifier = Modifier.width(16.dp))
                 Text("Delete account", color = Color.Red, fontSize = 16.sp, modifier = Modifier.weight(1f))
-                Icon(Icons.Default.KeyboardArrowRight, null, tint = Color.Gray)
+                Icon(Icons.Default.KeyboardArrowRight, null, tint = PaginexWhite.copy(alpha = 0.7f))
             }
             Divider(color = PaginexGlassBorder, thickness = 0.5.dp, modifier = Modifier.padding(horizontal = 24.dp))
 
@@ -4432,7 +4431,7 @@ fun SettingsScreen(
                     title = { Text("Delete Account", color = Color.Red, fontWeight = FontWeight.Bold) },
                     text = {
                         Column {
-                            Text("This action will anonymize your profile but keep your posts visible as 'Deleted Account'. Your personal library, followers, and booklists will be permanently deleted. This action cannot be undone.", color = Color.Gray, fontSize = 14.sp)
+                            Text("This action will anonymize your profile but keep your posts visible as 'Deleted Account'. Your personal library, followers, and booklists will be permanently deleted. This action cannot be undone.", color = PaginexWhite.copy(alpha = 0.7f), fontSize = 14.sp)
                             Spacer(modifier = Modifier.height(16.dp))
                             if (errorMessage != null) {
                                 Text(errorMessage!!, color = Color.Red, fontSize = 12.sp, modifier = Modifier.padding(bottom = 8.dp))
@@ -4440,7 +4439,7 @@ fun SettingsScreen(
                             OutlinedTextField(
                                 value = password,
                                 onValueChange = { password = it },
-                                label = { Text("Enter Password to Confirm", color = Color.Gray) },
+                                label = { Text("Enter Password to Confirm", color = PaginexWhite.copy(alpha = 0.7f)) },
                                 visualTransformation = androidx.compose.ui.text.input.PasswordVisualTransformation(),
                                 colors = OutlinedTextFieldDefaults.colors(
                                     focusedBorderColor = Color.Red,
@@ -4479,7 +4478,7 @@ fun SettingsScreen(
                     },
                     dismissButton = {
                         TextButton(onClick = { showDeleteAccountDialog = false }, enabled = !isLoading) {
-                            Text("Cancel", color = Color.Gray)
+                            Text("Cancel", color = PaginexWhite.copy(alpha = 0.7f))
                         }
                     }
                 )
@@ -4490,7 +4489,7 @@ fun SettingsScreen(
             // Customisation list
             Text(
                 "Customisation",
-                color = Color.Gray,
+                color = PaginexWhite.copy(alpha = 0.7f),
                 fontSize = 12.sp,
                 fontWeight = FontWeight.Bold,
                 letterSpacing = 1.sp,
@@ -4543,7 +4542,7 @@ fun ProfileStatItem(label: String, value: String, icon: ImageVector? = null, onC
             Spacer(modifier = Modifier.height(4.dp))
         }
         Text(value, fontWeight = FontWeight.ExtraBold, color = PaginexWhite, fontSize = 20.sp)
-        Text(label, fontSize = 11.sp, color = Color.Gray)
+        Text(label, fontSize = 11.sp, color = PaginexWhite.copy(alpha = 0.7f))
     }
 }
 
@@ -4617,7 +4616,7 @@ fun PublicProfileScreen(
                     UserGalaxy(user = u, rotation = rotation, onBookClick = onBookClick)
                     Spacer(modifier = Modifier.height(16.dp))
                     Text(u.fullName, color = PaginexWhite, fontSize = 24.sp, fontWeight = FontWeight.Bold)
-                    Text("@${u.username}", color = Color.Gray, fontSize = 14.sp)
+                    Text("@${u.username}", color = PaginexWhite.copy(alpha = 0.7f), fontSize = 14.sp)
 
                     if (u.bio.isNotEmpty()) {
                         Spacer(modifier = Modifier.height(16.dp))
@@ -4775,7 +4774,7 @@ fun PostListScreen(
     ) { padding ->
         if (posts.isEmpty()) {
             Box(modifier = Modifier.fillMaxSize().padding(padding), contentAlignment = Alignment.Center) {
-                Text("No posts found.", color = Color.Gray)
+                Text("No posts found.", color = PaginexWhite.copy(alpha = 0.7f))
             }
         } else {
             LazyColumn(

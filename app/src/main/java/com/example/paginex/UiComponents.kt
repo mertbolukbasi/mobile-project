@@ -1,5 +1,6 @@
 package com.example.paginex
 
+import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.*
 import kotlinx.coroutines.launch
 import androidx.compose.foundation.*
@@ -58,15 +59,25 @@ fun avatarModel(url: String, placeholder: String = "https://via.placeholder.com/
 val LocalIsDarkTheme = compositionLocalOf { true }
 val LocalThemeToggle = staticCompositionLocalOf<() -> Unit> { {} }
 
-val PaginexSpace: Color @Composable get() = if (LocalIsDarkTheme.current) Color(0xFF020408) else Color(0xFFF8F9FA)
-val PaginexGalaxy: Color @Composable get() = if (LocalIsDarkTheme.current) Color(0xFF0A0E1A) else Color(0xFFFFFFFF)
-val PaginexNeonPurple: Color @Composable get() = if (LocalIsDarkTheme.current) Color(0xFF918EF4) else Color(0xFF6C63FF)
-val PaginexNeonTeal: Color @Composable get() = if (LocalIsDarkTheme.current) Color(0xFF72C8C0) else Color(0xFF00BFA5)
-val PaginexNeonPink: Color @Composable get() = if (LocalIsDarkTheme.current) Color(0xFFE48C8C) else Color(0xFFFF5252)
-val PaginexWhite: Color @Composable get() = if (LocalIsDarkTheme.current) Color(0xFFF0F0F0) else Color(0xFF1A1A2E)
-val PaginexGlass: Color @Composable get() = if (LocalIsDarkTheme.current) Color(0xFFFFFFFF).copy(alpha = 0.08f) else Color(0xFF000000).copy(alpha = 0.04f)
-val PaginexGlassBorder: Color @Composable get() = if (LocalIsDarkTheme.current) Color(0xFFFFFFFF).copy(alpha = 0.15f) else Color(0xFF000000).copy(alpha = 0.08f)
-val PaginexOrbit: Color @Composable get() = if (LocalIsDarkTheme.current) Color(0xFFFFFFFF).copy(alpha = 0.15f) else Color(0xFF000000).copy(alpha = 0.15f)
+@Composable
+private fun animatedThemeColor(dark: Color, light: Color, label: String): Color {
+    val target = if (LocalIsDarkTheme.current) dark else light
+    return animateColorAsState(
+        targetValue = target,
+        animationSpec = tween(durationMillis = 320, easing = FastOutSlowInEasing),
+        label = label
+    ).value
+}
+
+val PaginexSpace: Color @Composable get() = animatedThemeColor(Color(0xFF020408), Color(0xFFF8F9FA), "paginex-space")
+val PaginexGalaxy: Color @Composable get() = animatedThemeColor(Color(0xFF0A0E1A), Color(0xFFFFFFFF), "paginex-galaxy")
+val PaginexNeonPurple: Color @Composable get() = animatedThemeColor(Color(0xFF918EF4), Color(0xFF6C63FF), "paginex-purple")
+val PaginexNeonTeal: Color @Composable get() = animatedThemeColor(Color(0xFF72C8C0), Color(0xFF00BFA5), "paginex-teal")
+val PaginexNeonPink: Color @Composable get() = animatedThemeColor(Color(0xFFE48C8C), Color(0xFFFF5252), "paginex-pink")
+val PaginexWhite: Color @Composable get() = animatedThemeColor(Color(0xFFF0F0F0), Color(0xFF1A1A2E), "paginex-white")
+val PaginexGlass: Color @Composable get() = animatedThemeColor(Color(0xFFFFFFFF).copy(alpha = 0.08f), Color(0xFF000000).copy(alpha = 0.04f), "paginex-glass")
+val PaginexGlassBorder: Color @Composable get() = animatedThemeColor(Color(0xFFFFFFFF).copy(alpha = 0.15f), Color(0xFF000000).copy(alpha = 0.08f), "paginex-glass-border")
+val PaginexOrbit: Color @Composable get() = animatedThemeColor(Color(0xFFFFFFFF).copy(alpha = 0.15f), Color(0xFF000000).copy(alpha = 0.15f), "paginex-orbit")
 
 // --- THEME ---
 @Composable
@@ -216,7 +227,7 @@ fun CosmicPlanet(
 @Composable
 fun PreviewBadge() {
     Surface(
-        color = Color.Black.copy(alpha = 0.7f),
+        color = PaginexWhite.copy(alpha = 0.7f),
         shape = RoundedCornerShape(4.dp),
         border = BorderStroke(1.dp, Color.White.copy(alpha = 0.2f))
     ) {
@@ -334,7 +345,7 @@ fun BookPostCard(
                     Text(
                         text = postAuthor?.let { "@${it.username}" } ?: "@user",
                         fontSize = 14.sp,
-                        color = Color.Gray
+                        color = PaginexWhite.copy(alpha = 0.7f)
                     )
                 }
                 
@@ -378,7 +389,7 @@ fun BookPostCard(
                 if (isOwnPost) {
                     Box {
                         IconButton(onClick = { menuExpanded = true }) {
-                            Icon(Icons.Default.MoreVert, null, tint = Color.Gray)
+                            Icon(Icons.Default.MoreVert, null, tint = PaginexWhite.copy(alpha = 0.7f))
                         }
                         DropdownMenu(
                             expanded = menuExpanded,
@@ -405,7 +416,7 @@ fun BookPostCard(
                     }
                 } else {
                     IconButton(onClick = {}) {
-                        Icon(Icons.Default.MoreVert, null, tint = Color.Gray)
+                        Icon(Icons.Default.MoreVert, null, tint = PaginexWhite.copy(alpha = 0.7f))
                     }
                 }
             }
@@ -443,7 +454,7 @@ fun BookPostCard(
                     Text(
                         text = post.book.author,
                         fontSize = 16.sp,
-                        color = Color.Gray,
+                        color = PaginexWhite.copy(alpha = 0.7f),
                         fontWeight = FontWeight.Medium
                     )
                     Spacer(modifier = Modifier.height(12.dp))
@@ -560,7 +571,7 @@ fun BookPostCard(
             Text(
                 text = timeAgo,
                 fontSize = 12.sp,
-                color = Color.Gray
+                color = PaginexWhite.copy(alpha = 0.7f)
             )
             
             Spacer(modifier = Modifier.height(16.dp))
