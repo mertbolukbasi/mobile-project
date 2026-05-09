@@ -1,0 +1,182 @@
+rules_version = '2';
+// Paginex — deploy: firebase deploy --only firestore:rules
+//
+// Client collections: users, follows, posts, drafts, books, booklists,
+// booklist_books, reading_statuses, likes, saves, comments, explore_images.
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function isUser(uid) {
+      return signedIn() && request.auth.uid == uid;
+    }
+
+    // --- helpers for engagement docs (likes/saves keyed by tableId) ---
+
+    function postExists(postId) {
+      return exists(/databases/$(database)/documents/posts/$(postId));
+    }
+
+    function postAuthorId(postId) {
+      return get(/databases/$(database)/documents/posts/$(postId)).data.userId;
+    }
+
+    function isAuthorOfPostTable(tableId) {
+      return signedIn()
+        && tableId != null
+        && postExists(tableId)
+        && postAuthorId(tableId) == request.auth.uid;
+    }
+
+    function booklistExists(listId) {
+      return exists(/databases/$(database)/documents/booklists/$(listId));
+    }
+
+    function booklistAuthorId(listId) {
+      return get(/databases/$(database)/documents/booklists/$(listId)).data.userId;
+    }
+
+    function ownsBooklistId(listId) {
+      return signedIn()
+        && listId != null
+        && booklistExists(listId)
+        && booklistAuthorId(listId) == request.auth.uid;
+    }
+
+    function ownsBooklistJunction(booklistId) {
+      return ownsBooklistId(booklistId);
+    }
+
+    // --- users ---
+    match /users/{userId} {
+      allow read: if signedIn();
+      // Profile document ID must match Firebase Auth UID.
+      allow create: if isUser(userId);
+
+      allow update: if isUser(userId);
+      allow delete: if false;
+    }
+
+    // --- follows (doc id pattern: follow_{followerId}_{followingId}) ---
+    match /follows/{followId} {
+      allow read: if signedIn();
+
+      allow create: if signedIn()
+        && request.resource.data.followerId == request.auth.uid
+        && request.resource.data.followingId != request.auth.uid
+        && request.resource.data.followerId is string
+        && request.resource.data.followingId is string;
+
+      allow update: if signedIn()
+        && resource.data.followerId == request.auth.uid
+        && request.resource.data.followerId == request.auth.uid
+        && request.resource.data.followingId == resource.data.followingId;
+
+      allow delete: if signedIn() && resource.data.followerId == request.auth.uid;
+    }
+
+    // --- posts ---
+    match /posts/{postId} {
+      allow read: if signedIn();
+      allow create: if signedIn()
+        && request.resource.data.userId == request.auth.uid
+        && request.resource.data.id == postId;
+      allow update, delete: if signedIn()
+        && resource.data.userId == request.auth.uid;
+    }
+
+    // --- drafts (only owner can see or mutate) ---
+    match /drafts/{draftId} {
+      allow read: if signedIn() && resource.data.userId == request.auth.uid;
+      allow create: if signedIn()
+        && request.resource.data.userId == request.auth.uid;
+      allow update, delete: if signedIn()
+        && resource.data.userId == request.auth.uid;
+    }
+
+    // --- catalogue (clients read-only; seed via Admin SDK or Console) ---
+    match /books/{bookId} {
+      allow read: if signedIn();
+      allow write: if false;
+    }
+
+    match /explore_images/{imageId} {
+      allow read: if signedIn();
+      allow write: if false;
+    }
+
+    // --- lists ---
+    match /booklists/{listId} {
+      allow read: if signedIn();
+      allow create: if signedIn()
+        && request.resource.data.userId == request.auth.uid;
+      allow update, delete: if signedIn()
+        && resource.data.userId == request.auth.uid;
+    }
+
+    match /booklist_books/{junctionId} {
+      allow read: if signedIn();
+      allow create: if signedIn()
+        && request.resource.data.keys().hasAll(['booklistId', 'bookId'])
+        && ownsBooklistJunction(request.resource.data.booklistId);
+      allow delete: if signedIn()
+        && ownsBooklistJunction(resource.data.booklistId);
+      allow update: if false;
+    }
+
+    // --- library status (current app reads whole collection — tighten later by querying userId only) ---
+    match /reading_statuses/{docId} {
+      allow read: if signedIn();
+      allow create: if signedIn()
+        && request.resource.data.userId == request.auth.uid;
+      allow update, delete: if signedIn()
+        && resource.data.userId == request.auth.uid;
+    }
+
+    // --- likes ---
+    match /likes/{likeId} {
+      allow read: if signedIn();
+      allow create: if signedIn()
+        && request.resource.data.userId == request.auth.uid;
+      allow delete: if signedIn() && (
+        resource.data.userId == request.auth.uid
+        || isAuthorOfPostTable(resource.data.tableId)
+        || ownsBooklistId(resource.data.tableId)
+      );
+      allow update: if false;
+    }
+
+    // --- saves ---
+    match /saves/{saveId} {
+      allow read: if signedIn();
+      allow create: if signedIn()
+        && request.resource.data.userId == request.auth.uid;
+      allow delete: if signedIn() && (
+        resource.data.userId == request.auth.uid
+        || isAuthorOfPostTable(resource.data.tableId)
+        || ownsBooklistId(resource.data.tableId)
+      );
+      allow update: if false;
+    }
+
+    // --- comments ---
+    match /comments/{commentId} {
+      allow read: if signedIn();
+      allow create: if signedIn()
+        && request.resource.data.userId == request.auth.uid;
+      allow update, delete: if signedIn() && (
+        resource.data.userId == request.auth.uid
+        || isAuthorOfPostTable(resource.data.tableId)
+      );
+    }
+
+    // --- default deny ---
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

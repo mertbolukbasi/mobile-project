@@ -294,11 +294,17 @@ fun BookPostCard(
 ) {
     var postAuthor by remember { mutableStateOf<FireUser?>(null) }
     var isFollowing by remember { mutableStateOf(false) }
+    // Avoid showing incorrect "Follow" (teal) before isFollowing resolves from Firestore.
+    var followStatusReady by remember(post.userId) { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
 
     LaunchedEffect(post.userId) {
+        followStatusReady = false
         postAuthor = FirestoreService.getUserById(post.userId)
-        isFollowing = FirestoreService.isFollowing("u1", post.userId)
+        val me = AuthService.getUid()
+        isFollowing =
+            me.isNotBlank() && post.userId != me && FirestoreService.isFollowing(me, post.userId)
+        followStatusReady = true
     }
 
     val timeAgo = remember(post.createdAt) {
@@ -354,26 +360,25 @@ fun BookPostCard(
                     )
                 }
                 
-                if (post.userId != "u1") {
+                val currentUid = AuthService.getUid()
+                if (currentUid.isNotBlank() && post.userId != currentUid && followStatusReady) {
                     TextButton(
                         onClick = {
                             scope.launch {
+                                val me = AuthService.getUid()
+                                if (me.isBlank() || post.userId == me) return@launch
                                 if (isFollowing) {
+                                    if (!FirestoreService.unfollowUser(me, post.userId)) return@launch
                                     isFollowing = false
                                     MockData.currentUser = MockData.currentUser.copy(
                                         followingCount = (MockData.currentUser.followingCount - 1).coerceAtLeast(0)
                                     )
-                                    kotlinx.coroutines.MainScope().launch {
-                                        FirestoreService.unfollowUser("u1", post.userId)
-                                    }
                                 } else {
+                                    if (!FirestoreService.followUser(me, post.userId)) return@launch
                                     isFollowing = true
                                     MockData.currentUser = MockData.currentUser.copy(
                                         followingCount = MockData.currentUser.followingCount + 1
                                     )
-                                    kotlinx.coroutines.MainScope().launch {
-                                        FirestoreService.followUser("u1", post.userId)
-                                    }
                                 }
                             }
                         },

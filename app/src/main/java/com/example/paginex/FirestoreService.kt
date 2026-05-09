@@ -356,7 +356,7 @@ object FirestoreService {
                     .get().await().size()
 
                 User(
-                    id = fireUser.id,
+                    id = fireUser.id.ifBlank { userId },
                     username = fireUser.username,
                     fullName = "${fireUser.name} ${fireUser.surname}",
                     avatarUrl = fireUser.avatarUrl,
@@ -381,7 +381,8 @@ object FirestoreService {
     suspend fun getUserById(userId: String): FireUser? {
         return try {
             val doc = db.collection("users").document(userId).get().await()
-            doc.toObject(FireUser::class.java)
+            val u = doc.toObject(FireUser::class.java) ?: return null
+            if (u.id.isBlank()) u.copy(id = doc.id) else u
         } catch (e: Exception) {
             Log.e(TAG, "Error getting user by id", e)
             null
@@ -615,6 +616,7 @@ object FirestoreService {
     }
 
     suspend fun isFollowing(followerId: String, followingId: String): Boolean {
+        if (followerId.isBlank() || followingId.isBlank() || followerId == followingId) return false
         return try {
             val snap = db.collection("follows")
                 .whereEqualTo("followerId", followerId)
@@ -628,10 +630,21 @@ object FirestoreService {
     }
 
     suspend fun followUser(followerId: String, followingId: String): Boolean {
+        if (followerId.isBlank() || followingId.isBlank() || followerId == followingId) {
+            Log.w(TAG, "followUser skipped: blank ids or self-follow")
+            return false
+        }
         return try {
-            val id = "f_${System.currentTimeMillis()}"
-            val follow = FireFollow(id = id, followerId = followerId, followingId = followingId)
-            db.collection("follows").document(id).set(follow).await()
+            val deterministicId = "follow_${followerId}_${followingId}"
+            val existing = db.collection("follows")
+                .whereEqualTo("followerId", followerId)
+                .whereEqualTo("followingId", followingId)
+                .get().await()
+            existing.documents.forEach { snap ->
+                if (snap.id != deterministicId) snap.reference.delete().await()
+            }
+            val follow = FireFollow(id = deterministicId, followerId = followerId, followingId = followingId)
+            db.collection("follows").document(deterministicId).set(follow).await()
             true
         } catch (e: Exception) {
             Log.e(TAG, "Error following user", e)
@@ -640,6 +653,7 @@ object FirestoreService {
     }
 
     suspend fun unfollowUser(followerId: String, followingId: String): Boolean {
+        if (followerId.isBlank() || followingId.isBlank()) return false
         return try {
             val snap = db.collection("follows")
                 .whereEqualTo("followerId", followerId)

@@ -4431,6 +4431,8 @@ fun ProfileMindMap(onClick: () -> Unit = {}) {
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun DraftsScreen(onBack: () -> Unit, onEditDraft: (String) -> Unit = {}) {
+    var draftIdPendingDelete by remember { mutableStateOf<String?>(null) }
+    var draftIdPendingPublish by remember { mutableStateOf<String?>(null) }
     Scaffold(
         containerColor = PaginexSpace,
         topBar = {
@@ -4495,10 +4497,7 @@ fun DraftsScreen(onBack: () -> Unit, onEditDraft: (String) -> Unit = {}) {
                                 }
                                 Spacer(modifier = Modifier.width(12.dp))
                                 OutlinedButton(
-                                    onClick = {
-                                        MockData.drafts.remove(draft)
-                                        kotlinx.coroutines.MainScope().launch { FirestoreService.deleteDraft(draft.id) }
-                                    },
+                                    onClick = { draftIdPendingDelete = draft.id },
                                     colors = ButtonDefaults.outlinedButtonColors(contentColor = Color.Red),
                                     border = BorderStroke(1.dp, Color.Red.copy(alpha = 0.5f))
                                 ) {
@@ -4506,15 +4505,7 @@ fun DraftsScreen(onBack: () -> Unit, onEditDraft: (String) -> Unit = {}) {
                                 }
                                 Spacer(modifier = Modifier.width(12.dp))
                                 Button(
-                                    onClick = {
-                                        MockData.feedPosts.add(0, draft)
-                                        MockData.drafts.remove(draft)
-                                        kotlinx.coroutines.MainScope().launch {
-                                            FirestoreService.createPost(draft)
-                                            FirestoreService.deleteDraft(draft.id)
-                                        }
-                                        onBack()
-                                    },
+                                    onClick = { draftIdPendingPublish = draft.id },
                                     colors = ButtonDefaults.buttonColors(containerColor = PaginexNeonPurple)
                                 ) {
                                     Text("Publish", color = PaginexWhite)
@@ -4527,6 +4518,72 @@ fun DraftsScreen(onBack: () -> Unit, onEditDraft: (String) -> Unit = {}) {
         }
     }
 
+    val pendingId = draftIdPendingDelete
+    if (pendingId != null) {
+        AlertDialog(
+            onDismissRequest = { draftIdPendingDelete = null },
+            containerColor = PaginexGalaxy,
+            title = { Text("Delete draft?", color = PaginexWhite, fontWeight = FontWeight.Bold) },
+            text = {
+                Text(
+                    "Are you sure you want to delete this draft?",
+                    color = PaginexWhite.copy(alpha = 0.85f)
+                )
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        MockData.drafts.removeAll { it.id == pendingId }
+                        kotlinx.coroutines.MainScope().launch { FirestoreService.deleteDraft(pendingId) }
+                        draftIdPendingDelete = null
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = Color.Red)
+                ) { Text("Delete", color = PaginexWhite) }
+            },
+            dismissButton = {
+                OutlinedButton(
+                    onClick = { draftIdPendingDelete = null },
+                    border = BorderStroke(1.dp, PaginexGlassBorder)
+                ) { Text("Cancel", color = PaginexWhite) }
+            }
+        )
+    }
+
+    val pendingPublishId = draftIdPendingPublish
+    if (pendingPublishId != null) {
+        AlertDialog(
+            onDismissRequest = { draftIdPendingPublish = null },
+            containerColor = PaginexGalaxy,
+            title = { Text("Publish post?", color = PaginexWhite) },
+            text = {
+                Text("Are you sure you want to publish?", color = PaginexWhite.copy(alpha = 0.7f))
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        val toPublish = MockData.drafts.find { it.id == pendingPublishId }
+                        if (toPublish != null) {
+                            MockData.feedPosts.add(0, toPublish)
+                            MockData.drafts.remove(toPublish)
+                            kotlinx.coroutines.MainScope().launch {
+                                FirestoreService.createPost(toPublish)
+                                FirestoreService.deleteDraft(toPublish.id)
+                            }
+                            onBack()
+                        }
+                        draftIdPendingPublish = null
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = PaginexNeonPurple)
+                ) { Text("Publish", color = PaginexWhite) }
+            },
+            dismissButton = {
+                OutlinedButton(
+                    onClick = { draftIdPendingPublish = null },
+                    border = BorderStroke(1.dp, PaginexGlassBorder)
+                ) { Text("Cancel", color = PaginexWhite) }
+            }
+        )
+    }
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -4856,6 +4913,7 @@ fun PublicProfileScreen(
 ) {
     var user by remember { mutableStateOf<User?>(null) }
     var isFollowing by remember { mutableStateOf(false) }
+    var followStatusReady by remember(userId) { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
     var showFollowers by remember { mutableStateOf(false) }
     var showFollowing by remember { mutableStateOf(false) }
@@ -4874,14 +4932,19 @@ fun PublicProfileScreen(
     )
 
     LaunchedEffect(userId) {
-        user = FirestoreService.getUserProfile(userId)
-        val posts = FirestoreService.getFeed()
-        userFeed.clear()
-        userFeed.addAll(posts.filter { it.userId == userId })
-        
-        // Check if current user is following this user
-        val followsReq = FirestoreService.getFollowing(AuthService.getUid())
-        isFollowing = followsReq.any { it.id == userId }
+        followStatusReady = false
+        val profile = FirestoreService.getUserProfile(userId)
+        val viewer = AuthService.getUid()
+        // Resolve follow before setting user so the first painted frame doesn’t briefly show wrong "Follow".
+        isFollowing =
+            viewer.isNotBlank() && userId != viewer && FirestoreService.isFollowing(viewer, userId)
+        user = profile
+        if (profile != null) {
+            val posts = FirestoreService.getFeed()
+            userFeed.clear()
+            userFeed.addAll(posts.filter { it.userId == userId })
+        }
+        followStatusReady = true
     }
 
     Scaffold(
@@ -4940,13 +5003,6 @@ fun PublicProfileScreen(
                         ProfileStatItem("Books", MockData.readingStatuses.count { it.userId == u.id }.toString(), null, onClick = { showLibrary = true })
                     }
 
-                    if (showFollowers) {
-                        UserListSheet("Followers", targetUserId = userId, onDismiss = { showFollowers = false })
-                    }
-                    if (showFollowing) {
-                        UserListSheet("Following", targetUserId = userId, onDismiss = { showFollowing = false })
-                    }
-
                     Spacer(modifier = Modifier.height(24.dp))
 
                     // Action Buttons Row
@@ -4983,34 +5039,45 @@ fun PublicProfileScreen(
 
                     Spacer(modifier = Modifier.height(24.dp))
 
-                    Button(
-                        onClick = {
-                            scope.launch {
-                                if (isFollowing) {
-                                    isFollowing = false
-                                    MockData.currentUser = MockData.currentUser.copy(followingCount = (MockData.currentUser.followingCount - 1).coerceAtLeast(0))
-                                    kotlinx.coroutines.MainScope().launch {
-                                        FirestoreService.unfollowUser(AuthService.getUid(), userId)
-                                    }
-                                } else {
-                                    isFollowing = true
-                                    MockData.currentUser = MockData.currentUser.copy(followingCount = MockData.currentUser.followingCount + 1)
-                                    kotlinx.coroutines.MainScope().launch {
-                                        FirestoreService.followUser(AuthService.getUid(), userId)
+                    val viewerId = AuthService.getUid()
+                    if (viewerId.isNotBlank() && userId != viewerId && followStatusReady) {
+                        Button(
+                            onClick = {
+                                scope.launch {
+                                    val viewer = AuthService.getUid()
+                                    val target = userId
+                                    val profileSnap = user ?: return@launch
+                                    if (viewer.isBlank() || viewer == target) return@launch
+                                    if (isFollowing) {
+                                        if (!FirestoreService.unfollowUser(viewer, target)) return@launch
+                                        isFollowing = false
+                                        MockData.currentUser = MockData.currentUser.copy(
+                                            followingCount = (MockData.currentUser.followingCount - 1).coerceAtLeast(0)
+                                        )
+                                        user = profileSnap.copy(
+                                            followersCount = (profileSnap.followersCount - 1).coerceAtLeast(0)
+                                        )
+                                    } else {
+                                        if (!FirestoreService.followUser(viewer, target)) return@launch
+                                        isFollowing = true
+                                        MockData.currentUser = MockData.currentUser.copy(
+                                            followingCount = MockData.currentUser.followingCount + 1
+                                        )
+                                        user = profileSnap.copy(followersCount = profileSnap.followersCount + 1)
                                     }
                                 }
-                            }
-                        },
-                        colors = ButtonDefaults.buttonColors(containerColor = if (isFollowing) PaginexGlass else PaginexNeonPurple),
-                        shape = RoundedCornerShape(24.dp),
-                        modifier = Modifier.fillMaxWidth(0.6f).height(48.dp)
-                    ) {
-                        Text(
-                            if (isFollowing) "Unfollow" else "Follow",
-                            color = if (isFollowing) PaginexWhite else Color.Black,
-                            fontWeight = FontWeight.Bold,
-                            fontSize = 16.sp
-                        )
+                            },
+                            colors = ButtonDefaults.buttonColors(containerColor = if (isFollowing) PaginexGlass else PaginexNeonPurple),
+                            shape = RoundedCornerShape(24.dp),
+                            modifier = Modifier.fillMaxWidth(0.6f).height(48.dp)
+                        ) {
+                            Text(
+                                if (isFollowing) "Unfollow" else "Follow",
+                                color = if (isFollowing) PaginexWhite else Color.Black,
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 16.sp
+                            )
+                        }
                     }
                 }
             }
@@ -5025,6 +5092,9 @@ fun PublicProfileScreen(
             }
         }
 
+        if (showFollowers) {
+            UserListSheet("Followers", targetUserId = userId, onDismiss = { showFollowers = false })
+        }
         if (showFollowing) {
             UserListSheet("Following", targetUserId = userId, onDismiss = { showFollowing = false })
         }

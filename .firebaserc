@@ -1,0 +1,7 @@
+{
+  "projects": {
+    "firebase deploy --only firestore:rules": "paginex-dd168"
+  },
+  "targets": {},
+  "etags": {}
+}
