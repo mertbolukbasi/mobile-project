@@ -232,13 +232,20 @@ fun PreviewBadge() {
 
 @Composable
 fun StatusBadge(status: String) {
-    val (glowColor, text) = when (status) {
-        "Read" -> PaginexNeonTeal to status
-        "Reading" -> PaginexNeonPurple to status
-        "To Read" -> PaginexNeonPurple.copy(alpha = 0.5f) to status
-        "On Hold" -> Color(0xFFD97706) to status
-        "Dropped" -> PaginexNeonPink to status
-        else -> Color.Gray to status
+    val mappedStatus = when (status) {
+        "Read", "Okundu" -> "Completed"
+        "To Read", "Want to Read", "Okunacak" -> "Plan To Read"
+        "On Hold" -> "On-hold"
+        "Okunuyor" -> "Reading"
+        else -> status
+    }
+    val (glowColor, text) = when (mappedStatus) {
+        "Completed" -> PaginexNeonTeal to mappedStatus
+        "Reading" -> PaginexNeonPurple to mappedStatus
+        "Plan To Read" -> PaginexOrbit to mappedStatus
+        "On-hold" -> Color(0xFFD97706) to mappedStatus
+        "Dropped" -> PaginexNeonPink to mappedStatus
+        else -> Color.Gray to mappedStatus
     }
 
     Surface(
@@ -440,41 +447,46 @@ fun BookPostCard(
                         fontWeight = FontWeight.Medium
                     )
                     Spacer(modifier = Modifier.height(12.dp))
-                    Row(
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                        verticalAlignment = Alignment.CenterVertically
+                    Column(
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
-                        Surface(
-                            color = PaginexWhite.copy(alpha = 0.05f),
-                            shape = RoundedCornerShape(16.dp),
-                            border = BorderStroke(1.dp, PaginexWhite.copy(alpha = 0.1f))
+                        Row(
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Text(
-                                post.book.genre,
-                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
-                                fontSize = 11.sp,
-                                color = PaginexWhite.copy(alpha = 0.7f)
-                            )
-                        }
-                        if (!post.isBooklistPost) {
-                            StatusBadge(post.status)
-                        }
-                        
-                        if (!post.isBooklistPost && post.rating > 0f) {
                             Surface(
-                                color = Color(0xFFFFD700).copy(alpha = 0.1f),
+                                color = PaginexWhite.copy(alpha = 0.05f),
                                 shape = RoundedCornerShape(16.dp),
-                                border = BorderStroke(1.dp, Color(0xFFFFD700).copy(alpha = 0.3f))
+                                border = BorderStroke(1.dp, PaginexWhite.copy(alpha = 0.1f))
                             ) {
-                                Row(
+                                Text(
+                                    post.book.genre,
                                     modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
-                                    verticalAlignment = Alignment.CenterVertically
+                                    fontSize = 11.sp,
+                                    color = PaginexWhite.copy(alpha = 0.7f)
+                                )
+                            }
+                            
+                            if (!post.isBooklistPost && post.rating > 0f) {
+                                Surface(
+                                    color = Color(0xFFFFD700).copy(alpha = 0.1f),
+                                    shape = RoundedCornerShape(16.dp),
+                                    border = BorderStroke(1.dp, Color(0xFFFFD700).copy(alpha = 0.3f))
                                 ) {
-                                    Icon(Icons.Default.Star, null, tint = Color(0xFFFFD700), modifier = Modifier.size(10.dp))
-                                    Spacer(modifier = Modifier.width(4.dp))
-                                    Text("${post.rating.toInt()}/10", fontSize = 11.sp, color = Color(0xFFFFD700), fontWeight = FontWeight.Bold)
+                                    Row(
+                                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Icon(Icons.Default.Star, null, tint = Color(0xFFFFD700), modifier = Modifier.size(10.dp))
+                                        Spacer(modifier = Modifier.width(4.dp))
+                                        Text("${post.rating.toInt()}/10", fontSize = 11.sp, color = Color(0xFFFFD700), fontWeight = FontWeight.Bold)
+                                    }
                                 }
                             }
+                        }
+                        
+                        if (!post.isBooklistPost) {
+                            StatusBadge(post.status)
                         }
                     }
                 }

@@ -24,7 +24,7 @@ object FirestoreService {
                 }
             } else {
                 Log.d(TAG, "Force resetting database. Deleting all seed data...")
-                val collectionsToClear = listOf("books", "users", "posts", "booklists", "booklist_books", "favourite_books", "reading_statuses", "explore_images", "follows", "likes", "saves", "comments")
+                val collectionsToClear = listOf("books", "users", "posts", "drafts", "booklists", "booklist_books", "favourite_books", "reading_statuses", "explore_images", "follows", "likes", "saves", "comments")
                 collectionsToClear.forEach { col ->
                     val docs = db.collection(col).get().await()
                     docs.forEach { it.reference.delete() }
@@ -238,7 +238,7 @@ object FirestoreService {
                 val description = doc.getString("description") ?: ""
                 val rating = doc.getDouble("rating")?.toFloat() ?: 0f
                 val bookId = doc.getString("bookId") ?: ""
-                val status = doc.getString("status") ?: "To Read"
+                val status = doc.getString("status") ?: "Plan To Read"
                 val createdAt = doc.getTimestamp("createdAt")?.toDate()?.time ?: System.currentTimeMillis()
                 val booklistId = doc.getString("booklistId")
 
@@ -437,7 +437,7 @@ object FirestoreService {
                     id = doc.getString("id") ?: "",
                     userId = doc.getString("userId") ?: "",
                     book = book,
-                    status = doc.getString("status") ?: "To Read",
+                    status = doc.getString("status") ?: "Plan To Read",
                     addedAt = doc.getTimestamp("createdAt")?.toDate()?.time ?: System.currentTimeMillis()
                 )
             }
@@ -823,6 +823,140 @@ object FirestoreService {
         }
     }
 
+    suspend fun createDraft(draft: Post): Boolean {
+        Log.d(TAG, "createDraft invoked for draft: ${draft.id}")
+        return try {
+            val fireDraft = hashMapOf(
+                "id" to draft.id,
+                "userId" to draft.userId,
+                "description" to draft.review,
+                "rating" to draft.rating.toDouble(),
+                "bookId" to if (draft.isBooklistPost) "" else draft.book.id,
+                "booklistId" to if (draft.isBooklistPost) draft.booklist?.id else null,
+                "status" to draft.status,
+                "createdAt" to Timestamp.now(),
+                "updatedAt" to Timestamp.now()
+            )
+            db.collection("drafts").document(draft.id).set(fireDraft).await()
+            Log.d(TAG, "createDraft SUCCESS for draft: ${draft.id}")
+            true
+        } catch (e: Exception) {
+            Log.e(TAG, "Error creating draft", e)
+            false
+        }
+    }
+
+    suspend fun deleteDraft(draftId: String): Boolean {
+        return try {
+            db.collection("drafts").document(draftId).delete().await()
+            true
+        } catch (e: Exception) {
+            Log.e(TAG, "Error deleting draft", e)
+            false
+        }
+    }
+
+    suspend fun getDrafts(userId: String): List<Post> {
+        return try {
+            val draftsSnap = db.collection("drafts")
+                .whereEqualTo("userId", userId)
+                .get()
+                .await()
+
+            val booksSnap = db.collection("books").get().await()
+            val booksMap = booksSnap.toObjects(FireBook::class.java).associateBy { it.id }
+
+            val drafts = mutableListOf<Post>()
+            for (doc in draftsSnap.documents) {
+                val id = doc.getString("id") ?: continue
+                val description = doc.getString("description") ?: ""
+                val rating = doc.getDouble("rating")?.toFloat() ?: 0f
+                val status = doc.getString("status") ?: "Plan To Read"
+                val createdAt = doc.getTimestamp("createdAt")?.toDate()?.time ?: System.currentTimeMillis()
+                val bookId = doc.getString("bookId") ?: ""
+                val booklistId = doc.getString("booklistId")
+
+                if (booklistId.isNullOrEmpty()) {
+                    val fireBook = booksMap[bookId] ?: continue
+                    val book = Book(
+                        id = fireBook.id,
+                        title = fireBook.title,
+                        author = fireBook.author,
+                        coverUrl = fireBook.coverUrl,
+                        genre = fireBook.genre,
+                        publishYear = fireBook.publishYear?.toDate()?.let {
+                            val cal = Calendar.getInstance()
+                            cal.time = it
+                            cal.get(Calendar.YEAR)
+                        } ?: 2020,
+                        summary = fireBook.summary,
+                        isbn = fireBook.isbn
+                    )
+                    drafts.add(
+                        Post(
+                            id = id,
+                            userId = userId,
+                            book = book,
+                            status = status,
+                            rating = rating,
+                            review = description,
+                            createdAt = createdAt
+                        )
+                    )
+                } else {
+                    val listDoc = try { db.collection("booklists").document(booklistId).get().await() } catch (e: Exception) { null }
+                    if (listDoc != null && listDoc.exists()) {
+                        val fireList = listDoc.toObject(FireBookList::class.java)
+                        if (fireList != null) {
+                            val booksInList = mutableListOf<Book>()
+                            val junctionSnap = try { db.collection("booklist_books").whereEqualTo("booklistId", fireList.id).get().await() } catch (e: Exception) { null }
+                            junctionSnap?.documents?.forEach { jDoc ->
+                                val bId = jDoc.getString("bookId")
+                                booksMap[bId]?.let { fb ->
+                                    booksInList.add(Book(id = fb.id, title = fb.title, author = fb.author, coverUrl = fb.coverUrl))
+                                }
+                            }
+                            val loadedList = BookList(
+                                id = fireList.id,
+                                userId = fireList.userId,
+                                name = fireList.name,
+                                description = fireList.description,
+                                coverUrl = booksInList.firstOrNull()?.coverUrl ?: "",
+                                isPrivate = fireList.isPrivate,
+                                createdAt = fireList.createdAt.toDate().time,
+                                books = booksInList
+                            )
+                            val dummyBook = Book(
+                                id = loadedList.id,
+                                title = loadedList.name,
+                                author = "List by author",
+                                coverUrl = loadedList.coverUrl,
+                                genre = "Booklist"
+                            )
+                            drafts.add(
+                                Post(
+                                    id = id,
+                                    userId = userId,
+                                    book = dummyBook,
+                                    status = status,
+                                    rating = rating,
+                                    review = description,
+                                    createdAt = createdAt,
+                                    isBooklistPost = true,
+                                    booklist = loadedList
+                                )
+                            )
+                        }
+                    }
+                }
+            }
+            drafts.sortedByDescending { it.createdAt }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error getting drafts", e)
+            emptyList()
+        }
+    }
+
     suspend fun deletePost(postId: String): Boolean {
         return try {
             db.collection("posts").document(postId).delete().await()
@@ -987,6 +1121,7 @@ object FirestoreService {
                 val listsSnapDef = async { db.collection("booklists").get().await() }
                 val exploreSnapDef = async { db.collection("explore_images").get().await() }
                 val statusesDef = async { getReadingStatuses() }
+                val draftsDef = async { getDrafts(currentUserId) }
                 val allUsersDef = async { db.collection("users").get().await() }
 
                 val userSavesSnapInitial = db.collection("saves").whereEqualTo("userId", currentUserId).get().await()
@@ -1091,6 +1226,10 @@ object FirestoreService {
                 MockData.readingStatuses.clear()
                 MockData.readingStatuses.addAll(statuses)
 
+                val drafts = draftsDef.await()
+                MockData.drafts.clear()
+                MockData.drafts.addAll(drafts)
+
                 // Harmonization:
                 // If a post exists but the book isn't formally on the user's shelf, add it organically to the shelf.
                 // Skip booklist type posts — their book is a dummy and should never go to the shelf.
@@ -1106,6 +1245,42 @@ object FirestoreService {
                         )
                         MockData.readingStatuses.add(generatedStatus)
                         launch(Dispatchers.IO) { addBookToLibrary(post.userId, post.book.id, post.status) }
+                    }
+                }
+
+                // One-time migration for old statuses
+                launch(Dispatchers.IO) {
+                    try {
+                        val postsSnap = db.collection("posts").get().await()
+                        for (doc in postsSnap.documents) {
+                            val status = doc.getString("status") ?: continue
+                            val newStatus = when (status) {
+                                "Read", "Okundu" -> "Completed"
+                                "To Read", "Want to Read", "Okunacak" -> "Plan To Read"
+                                "On Hold" -> "On-hold"
+                                "Okunuyor" -> "Reading"
+                                else -> status
+                            }
+                            if (newStatus != status) {
+                                db.collection("posts").document(doc.id).update("status", newStatus).await()
+                            }
+                        }
+                        val rsSnap = db.collection("reading_statuses").get().await()
+                        for (doc in rsSnap.documents) {
+                            val status = doc.getString("status") ?: continue
+                            val newStatus = when (status) {
+                                "Read", "Okundu" -> "Completed"
+                                "To Read", "Want to Read", "Okunacak" -> "Plan To Read"
+                                "On Hold" -> "On-hold"
+                                "Okunuyor" -> "Reading"
+                                else -> status
+                            }
+                            if (newStatus != status) {
+                                db.collection("reading_statuses").document(doc.id).update("status", newStatus).await()
+                            }
+                        }
+                    } catch (e: Exception) {
+                        Log.e(TAG, "Migration error", e)
                     }
                 }
             }

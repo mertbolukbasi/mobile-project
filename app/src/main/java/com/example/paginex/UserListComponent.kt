@@ -4,6 +4,8 @@ import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -126,6 +128,18 @@ fun UserLibrarySheet(
     val library = remember(targetUserId, MockData.readingStatuses.size, MockData.readingStatuses.toList()) {
         MockData.readingStatuses.filter { it.userId == targetUserId }.sortedByDescending { it.addedAt }
     }
+    val normalizedStatuses = listOf("All", "Completed", "Reading", "Plan To Read", "On-hold", "Dropped")
+    var selectedStatus by remember { mutableStateOf("All") }
+    val filteredLibrary = remember(library, selectedStatus) {
+        fun normalizeStatus(value: String): String = when (value) {
+            "Read", "Okundu" -> "Completed"
+            "To Read", "Want to Read", "Okunacak" -> "Plan To Read"
+            "On Hold" -> "On-hold"
+            "Okunuyor" -> "Reading"
+            else -> value
+        }
+        if (selectedStatus == "All") library else library.filter { normalizeStatus(it.status) == selectedStatus }
+    }
     var deleteError by remember { mutableStateOf<String?>(null) }
 
     ModalBottomSheet(
@@ -149,18 +163,39 @@ fun UserLibrarySheet(
                 Text(deleteError!!, color = Color(0xFFEF4444), fontSize = 12.sp)
                 LaunchedEffect(deleteError) { delay(3000); deleteError = null }
             }
-            Spacer(modifier = Modifier.height(20.dp))
+            Spacer(modifier = Modifier.height(12.dp))
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .horizontalScroll(rememberScrollState()),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                normalizedStatuses.forEach { status ->
+                    FilterChip(
+                        selected = selectedStatus == status,
+                        onClick = { selectedStatus = status },
+                        label = { Text(status) },
+                        colors = FilterChipDefaults.filterChipColors(
+                            containerColor = PaginexGlass,
+                            selectedContainerColor = PaginexNeonPurple.copy(alpha = 0.22f),
+                            labelColor = PaginexWhite,
+                            selectedLabelColor = PaginexNeonPurple
+                        )
+                    )
+                }
+            }
+            Spacer(modifier = Modifier.height(16.dp))
 
-            if (library.isEmpty()) {
+            if (filteredLibrary.isEmpty()) {
                 Box(modifier = Modifier.fillMaxSize().padding(16.dp), contentAlignment = Alignment.Center) {
-                    Text("No books added yet.", color = Color.Gray, fontSize = 14.sp)
+                    Text("No books match this status.", color = Color.Gray, fontSize = 14.sp)
                 }
             } else {
                 LazyColumn(
                     verticalArrangement = Arrangement.spacedBy(16.dp),
                     contentPadding = PaddingValues(bottom = 32.dp)
                 ) {
-                    items(library, key = { it.id + it.status }) { status ->
+                    items(filteredLibrary, key = { it.id + it.status }) { status ->
                         LibraryBookItem(
                             status = status,
                             isOwner = isOwner,
@@ -197,7 +232,7 @@ fun UserLibrarySheet(
 @Composable
 fun LibraryBookItem(status: ReadingStatus, isOwner: Boolean = false, onStatusChange: (String) -> Unit = {}, onDelete: () -> Unit = {}) {
     var showDropdown by remember { mutableStateOf(false) }
-    val statuses = listOf("Reading", "Read", "To Read", "On Hold", "Dropped")
+    val statuses = listOf("Completed", "Reading", "Plan To Read", "On-hold", "Dropped")
     Card(
         modifier = Modifier.fillMaxWidth().height(100.dp),
         colors = CardDefaults.cardColors(containerColor = PaginexGlass),
@@ -220,15 +255,22 @@ fun LibraryBookItem(status: ReadingStatus, isOwner: Boolean = false, onStatusCha
                 Text(status.book.author, color = Color.Gray, fontSize = 12.sp, maxLines = 1)
                 Spacer(modifier = Modifier.weight(1f))
                 
-                val statusColor = when (status.status) {
-                    "Okunuyor", "Reading" -> PaginexNeonPurple
-                    "Okunacak", "To Read", "Want to Read" -> PaginexOrbit
-                    "Okundu", "Completed", "Read" -> PaginexNeonTeal
-                    "On Hold" -> Color(0xFFD97706)
+                val mappedStatus = when (status.status) {
+                    "Read", "Okundu" -> "Completed"
+                    "To Read", "Want to Read", "Okunacak" -> "Plan To Read"
+                    "On Hold" -> "On-hold"
+                    "Okunuyor" -> "Reading"
+                    else -> status.status
+                }
+                val statusColor = when (mappedStatus) {
+                    "Reading" -> PaginexNeonPurple
+                    "Plan To Read" -> PaginexOrbit
+                    "Completed" -> PaginexNeonTeal
+                    "On-hold" -> Color(0xFFD97706)
                     else -> Color.Gray
                 }
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text(status.status, color = statusColor, fontSize = 10.sp, fontWeight = FontWeight.ExtraBold)
+                    Text(mappedStatus, color = statusColor, fontSize = 10.sp, fontWeight = FontWeight.ExtraBold)
                     if (isOwner) {
                         Spacer(modifier = Modifier.width(6.dp))
                         Text(

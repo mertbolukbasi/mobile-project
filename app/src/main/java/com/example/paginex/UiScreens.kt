@@ -281,13 +281,16 @@ fun PaginexApp() {
                     onDraftsClick = { navController.navigate(Screen.Drafts.route) }
                 ) 
             }
-            composable(Screen.Saved.route) { SavedPostsScreen(onBookClick = { postId -> navController.navigate("detail/$postId") }) }
+            composable(Screen.Saved.route) { SavedPostsScreen(onBookClick = { postId -> navController.navigate("post_list/$postId?mode=saved_book") }) }
             composable(Screen.Profile.route) { PaginexProfileScreen(
                 onEditClick = { navController.navigate(Screen.Settings.route) },
                 onListsClick = { navController.navigate("book_lists/${AuthService.getUid()}") },
                 onConstellationClick = { navController.navigate("constellation/${AuthService.getUid()}") },
-                onBookClick = { postId -> navController.navigate("detail/$postId?ownerOnly=true") },
-                onLogoutClick = { navController.navigate(Screen.Login.route) { popUpTo(0) } }
+                onBookClick = { postId -> navController.navigate("post_list/$postId?mode=single") },
+                onLogoutClick = {
+                    AuthService.logout()
+                    navController.navigate(Screen.Login.route) { popUpTo(0) }
+                }
             ) }
             composable(Screen.EditProfile.route) { EditProfileScreen { navController.popBackStack() } }
             composable(
@@ -297,7 +300,30 @@ fun PaginexApp() {
                 val userId = backStackEntry.arguments?.getString("userId") ?: AuthService.getUid()
                 BookListsScreen(targetUserId = userId) { navController.popBackStack() } 
             }
-            composable(Screen.Drafts.route) { DraftsScreen { navController.popBackStack() } }
+            composable(Screen.Drafts.route) {
+                DraftsScreen(
+                    onBack = { navController.popBackStack() },
+                    onEditDraft = { draftId -> navController.navigate("create-post?postId=$draftId") }
+                )
+            }
+            composable(
+                route = "post_list/{postId}?mode={mode}",
+                arguments = listOf(
+                    navArgument("postId") { type = NavType.StringType },
+                    navArgument("mode") { type = NavType.StringType; defaultValue = "single" }
+                )
+            ) { backStackEntry ->
+                val postId = backStackEntry.arguments?.getString("postId") ?: ""
+                val mode = backStackEntry.arguments?.getString("mode") ?: "single"
+                PostListScreen(
+                    postId = postId,
+                    mode = mode,
+                    onBack = { navController.popBackStack() },
+                    onNavigateToDetail = { id -> navController.navigate("detail/$id") },
+                    onNavigateToUser = { id -> navController.navigate(Screen.PublicProfile.route.replace("{userId}", id)) },
+                    onNavigateToEdit = { id -> navController.navigate(Screen.CreatePost.route + "?postId=$id") }
+                )
+            }
             composable(
                 route = "constellation/{userId}",
                 arguments = listOf(navArgument("userId") { type = NavType.StringType })
@@ -318,12 +344,20 @@ fun PaginexApp() {
             ) { backStackEntry -> 
                 val postId = backStackEntry.arguments?.getString("postId")
                 val ownerOnly = backStackEntry.arguments?.getBoolean("ownerOnly") ?: false
-                BookDetailScreen(postId, ownerOnly) { navController.popBackStack() } 
+                BookDetailScreen(
+                    postId = postId,
+                    ownerOnly = ownerOnly,
+                    onBack = { navController.popBackStack() },
+                    onReviewClick = { reviewPostId -> navController.navigate("post_list/$reviewPostId?mode=single") }
+                ) 
             }
             composable(Screen.Settings.route) { 
                 SettingsScreen(
                     onNavigateToEditProfile = { navController.navigate(Screen.EditProfile.route) },
-                    onLogout = { navController.navigate(Screen.Login.route) { popUpTo(0) } },
+                    onLogout = {
+                        AuthService.logout()
+                        navController.navigate(Screen.Login.route) { popUpTo(0) }
+                    },
                     onBack = { navController.popBackStack() }
                 )
             }
@@ -353,6 +387,7 @@ fun EditFavoritesSheet(
     onSave: (List<String>) -> Unit
 ) {
     val selected = remember { mutableStateListOf<String>().apply { addAll(currentFavorites) } }
+    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     val allBooks = remember(MockData.readingStatuses.size) {
         val currentUid = AuthService.getUid()
         MockData.readingStatuses.filter { it.userId == currentUid }.map { it.book }.distinctBy { it.id }
@@ -360,11 +395,17 @@ fun EditFavoritesSheet(
     var searchQuery by remember { mutableStateOf("") }
 
     ModalBottomSheet(
+        sheetState = sheetState,
         onDismissRequest = onDismiss,
         containerColor = PaginexSpace,
         dragHandle = { BottomSheetDefaults.DragHandle(color = Color.Gray) }
     ) {
-        Column(modifier = Modifier.fillMaxSize().padding(16.dp)) {
+        Column(
+            modifier = Modifier
+                .fillMaxHeight(0.92f)
+                .imePadding()
+                .padding(horizontal = 16.dp, vertical = 12.dp)
+        ) {
             Text("Edit Favorite Books", color = PaginexWhite, fontSize = 20.sp, fontWeight = FontWeight.Bold)
             Text("Select up to 5 books to show in your galaxy (${selected.size}/5)", color = Color.Gray, fontSize = 14.sp)
             Spacer(modifier = Modifier.height(16.dp))
@@ -410,15 +451,33 @@ fun EditFavoritesSheet(
                     }
                 }
             }
-            
-            Button(
-                onClick = { onSave(selected) },
-                modifier = Modifier.fillMaxWidth(),
-                colors = ButtonDefaults.buttonColors(containerColor = PaginexNeonPurple)
+
+            Spacer(modifier = Modifier.height(12.dp))
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .navigationBarsPadding(),
+                horizontalArrangement = Arrangement.spacedBy(12.dp)
             ) {
-                Text("Save", color = Color.Black, fontWeight = FontWeight.Bold)
+                OutlinedButton(
+                    onClick = onDismiss,
+                    modifier = Modifier
+                        .weight(1f)
+                        .height(48.dp),
+                    border = BorderStroke(1.dp, PaginexGlassBorder)
+                ) {
+                    Text("Cancel", color = PaginexWhite, fontWeight = FontWeight.SemiBold)
+                }
+                Button(
+                    onClick = { onSave(selected.toList()) },
+                    modifier = Modifier
+                        .weight(1f)
+                        .height(48.dp),
+                    colors = ButtonDefaults.buttonColors(containerColor = PaginexNeonPurple)
+                ) {
+                    Text("Save", color = Color.Black, fontWeight = FontWeight.Bold)
+                }
             }
-            Spacer(modifier = Modifier.height(32.dp))
         }
     }
 }
@@ -1185,7 +1244,9 @@ fun PaginexHomeScreen(
 fun ExploreScreen(onBookClick: (String) -> Unit = {}) {
     var selectedListForDetails by remember { mutableStateOf<BookList?>(null) }
     var searchQuery by remember { mutableStateOf("") }
-    var searchType by remember { mutableStateOf("Kitaplar") }
+    val booksTab = "Books"
+    val usersTab = "Users"
+    var searchType by remember { mutableStateOf(booksTab) }
     val infiniteTransition = rememberInfiniteTransition()
     val nebulaOffset by infiniteTransition.animateFloat(
         initialValue = 0f,
@@ -1266,7 +1327,7 @@ fun ExploreScreen(onBookClick: (String) -> Unit = {}) {
         // Discover Lists Section removed per user request
 
         // Search Type Toggles
-        val searchTypes = listOf("Kitaplar", "Kullanıcılar")
+        val searchTypes = listOf(booksTab, usersTab)
         Row(
             modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
             horizontalArrangement = Arrangement.spacedBy(24.dp)
@@ -1282,7 +1343,7 @@ fun ExploreScreen(onBookClick: (String) -> Unit = {}) {
             }
         }
 
-        if (searchType == "Kitaplar") {
+        if (searchType == booksTab) {
             // Genre Categories
             val genres = listOf("All", "Sci-Fi", "Dystopia", "Classic", "Novel", "History", "Mystery", "Art")
             var selectedGenre by remember { mutableStateOf("All") }
@@ -1316,11 +1377,12 @@ fun ExploreScreen(onBookClick: (String) -> Unit = {}) {
                 verticalItemSpacing = 12.dp
             ) {
                 items(filteredBooks, key = { it.id }) { book ->
-                val randomHeight = remember { (200..350).random().dp }
+                // Keep card height deterministic per book to avoid jitter/glitches on recomposition.
+                val cardHeight = ((kotlin.math.abs(book.id.hashCode()) % 151) + 200).dp
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(randomHeight)
+                        .height(cardHeight)
                         .clip(RoundedCornerShape(24.dp))
                         .background(PaginexGlass)
                         .border(1.dp, PaginexGlassBorder, RoundedCornerShape(24.dp))
@@ -1412,7 +1474,12 @@ fun ExploreScreen(onBookClick: (String) -> Unit = {}) {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun BookDetailScreen(postId: String?, ownerOnly: Boolean = false, onBack: () -> Unit) {
+fun BookDetailScreen(
+    postId: String?,
+    ownerOnly: Boolean = false,
+    onBack: () -> Unit,
+    onReviewClick: (String) -> Unit = {}
+) {
     var selectedListForDetails by remember { mutableStateOf<BookList?>(null) }
     val foundBook = MockData.sampleBooks.find { it.id == postId }
     val initialPost = MockData.feedPosts.find { it.id == postId || it.book.id == postId } 
@@ -1513,7 +1580,10 @@ fun BookDetailScreen(postId: String?, ownerOnly: Boolean = false, onBack: () -> 
             
             bookReviews.forEach { reviewPost ->
                 Card(
-                    modifier = Modifier.fillMaxWidth().padding(bottom = 16.dp),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(bottom = 16.dp)
+                        .clickable { onReviewClick(reviewPost.id) },
                     colors = CardDefaults.cardColors(containerColor = PaginexGlass),
                     shape = RoundedCornerShape(16.dp),
                     border = BorderStroke(1.dp, PaginexGlassBorder)
@@ -1633,7 +1703,9 @@ fun PaginexProfileScreen(
     )
     var showAddBookDialog by remember { mutableStateOf(false) }
     var showLogoutDialog by remember { mutableStateOf(false) }
-    val currentlyReading = MockData.readingStatuses.filter { it.status == "Reading" && it.userId == (AuthService.getUid()) }
+    var selectedFilterStatus by remember { mutableStateOf("Reading") }
+    val availableStatuses = listOf("Completed", "Reading", "Plan To Read", "On-hold", "Dropped")
+    val filteredLibrary = MockData.readingStatuses.filter { it.status == selectedFilterStatus && it.userId == (AuthService.getUid()) }
     val scope = rememberCoroutineScope()
 
     androidx.activity.compose.BackHandler(enabled = true) {
@@ -1835,37 +1907,84 @@ fun PaginexProfileScreen(
 
 
             // ---- READING SECTION ----
-            if (currentlyReading.isNotEmpty()) {
-                Spacer(modifier = Modifier.height(20.dp))
+            Spacer(modifier = Modifier.height(20.dp))
+            
+            // Filters
+            ScrollableTabRow(
+                selectedTabIndex = availableStatuses.indexOf(selectedFilterStatus).coerceAtLeast(0),
+                containerColor = Color.Transparent,
+                edgePadding = 20.dp,
+                indicator = {},
+                divider = {}
+            ) {
+                availableStatuses.forEach { status ->
+                    val isSelected = selectedFilterStatus == status
+                    val color = when (status) {
+                        "Reading" -> PaginexNeonPurple
+                        "Plan To Read" -> PaginexOrbit
+                        "Completed" -> PaginexNeonTeal
+                        "On-hold" -> Color(0xFFD97706)
+                        else -> Color.Gray
+                    }
+                    Tab(
+                        selected = isSelected,
+                        onClick = { selectedFilterStatus = status },
+                        modifier = Modifier.padding(end = 8.dp)
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(20.dp))
+                                .background(if (isSelected) color.copy(alpha = 0.2f) else PaginexGlass)
+                                .border(1.dp, if (isSelected) color else PaginexGlassBorder, RoundedCornerShape(20.dp))
+                                .padding(horizontal = 16.dp, vertical = 8.dp)
+                        ) {
+                            Text(status, color = if (isSelected) color else Color.Gray, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                        }
+                    }
+                }
+            }
+            
+            Spacer(modifier = Modifier.height(12.dp))
+
+            if (filteredLibrary.isNotEmpty()) {
+                val color = when (selectedFilterStatus) {
+                    "Reading" -> PaginexNeonPurple
+                    "Plan To Read" -> PaginexOrbit
+                    "Completed" -> PaginexNeonTeal
+                    "On-hold" -> Color(0xFFD97706)
+                    else -> Color.Gray
+                }
                 Card(
                     modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp),
-                    colors = CardDefaults.cardColors(containerColor = PaginexNeonPurple.copy(alpha = 0.08f)),
+                    colors = CardDefaults.cardColors(containerColor = color.copy(alpha = 0.08f)),
                     shape = RoundedCornerShape(20.dp),
-                    border = BorderStroke(1.dp, PaginexNeonPurple.copy(alpha = 0.3f))
+                    border = BorderStroke(1.dp, color.copy(alpha = 0.3f))
                 ) {
                     Column(modifier = Modifier.padding(16.dp)) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
-                            // Pulsing dot
-                            val pulse by infiniteTransition.animateFloat(
-                                initialValue = 0.4f, targetValue = 1f,
-                                animationSpec = infiniteRepeatable(tween(800), RepeatMode.Reverse), label = ""
-                            )
-                            Box(
-                                modifier = Modifier
-                                    .size(8.dp)
-                                    .background(PaginexNeonPurple.copy(alpha = pulse), CircleShape)
-                            )
-                            Spacer(modifier = Modifier.width(8.dp))
+                            if (selectedFilterStatus == "Reading") {
+                                // Pulsing dot
+                                val pulse by infiniteTransition.animateFloat(
+                                    initialValue = 0.4f, targetValue = 1f,
+                                    animationSpec = infiniteRepeatable(tween(800), RepeatMode.Reverse), label = ""
+                                )
+                                Box(
+                                    modifier = Modifier
+                                        .size(8.dp)
+                                        .background(color.copy(alpha = pulse), CircleShape)
+                                )
+                                Spacer(modifier = Modifier.width(8.dp))
+                            }
                             Text(
-                                "CURRENTLY READING",
-                                color = PaginexNeonPurple,
+                                selectedFilterStatus.uppercase(),
+                                color = color,
                                 fontWeight = FontWeight.ExtraBold,
                                 fontSize = 11.sp,
                                 letterSpacing = 2.sp
                             )
                         }
                         Spacer(modifier = Modifier.height(12.dp))
-                        currentlyReading.forEach { rs ->
+                        filteredLibrary.forEach { rs ->
                             Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(bottom = 8.dp)) {
                                 AsyncImage(
                                     model = rs.book.coverUrl.ifEmpty { R.drawable.ic_paginex_icon },
@@ -2829,9 +2948,10 @@ fun AddBookToListDialog(bookList: BookList, onDismiss: () -> Unit, onBookAdded: 
 
 @Composable
 fun AddBookToLibraryDialog(onDismiss: () -> Unit, onBookAdded: (Book, String) -> Unit) {
-    var selectedStatus by remember { mutableStateOf("To Read") }
-    val statuses = listOf("Reading", "Read", "To Read", "On Hold", "Dropped")
+    var selectedStatus by remember { mutableStateOf("Plan To Read") }
+    val statuses = listOf("Completed", "Reading", "Plan To Read", "On-hold", "Dropped")
     var searchQuery by remember { mutableStateOf("") }
+    var selectedBook by remember { mutableStateOf<Book?>(null) }
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -2845,10 +2965,11 @@ fun AddBookToLibraryDialog(onDismiss: () -> Unit, onBookAdded: (Book, String) ->
                 LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     items(statuses) { s ->
                         val color = when(s) {
-                            "Read" -> PaginexNeonTeal
+                            "Completed" -> PaginexNeonTeal
                             "Reading" -> PaginexNeonPurple
+                            "Plan To Read" -> PaginexOrbit
                             "Dropped" -> PaginexNeonPink
-                            "On Hold" -> Color(0xFFD97706)
+                            "On-hold" -> Color(0xFFD97706)
                             else -> PaginexWhite.copy(alpha = 0.6f)
                         }
                         Surface(
@@ -2885,12 +3006,14 @@ fun AddBookToLibraryDialog(onDismiss: () -> Unit, onBookAdded: (Book, String) ->
                     val existingBookIds = MockData.readingStatuses.filter { it.userId == currentUid }.map { it.book.id }.toSet()
                     val filteredBooks = MockData.sampleBooks.filter { it.title.contains(searchQuery, ignoreCase = true) && !existingBookIds.contains(it.id) }
                     items(filteredBooks) { book ->
+                        val isBookSelected = selectedBook?.id == book.id
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .clip(RoundedCornerShape(10.dp))
-                                .background(PaginexGlass)
-                                .clickable { onBookAdded(book, selectedStatus) }
+                                .background(if (isBookSelected) PaginexNeonPurple.copy(alpha = 0.2f) else PaginexGlass)
+                                .border(1.dp, if (isBookSelected) PaginexNeonPurple else Color.Transparent, RoundedCornerShape(10.dp))
+                                .clickable { selectedBook = book }
                                 .padding(10.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
@@ -2910,7 +3033,16 @@ fun AddBookToLibraryDialog(onDismiss: () -> Unit, onBookAdded: (Book, String) ->
                 }
             }
         },
-        confirmButton = {},
+        confirmButton = {
+            Button(
+                onClick = { selectedBook?.let { onBookAdded(it, selectedStatus) } },
+                enabled = selectedBook != null,
+                colors = ButtonDefaults.buttonColors(containerColor = PaginexNeonPurple),
+                shape = RoundedCornerShape(12.dp)
+            ) {
+                Text("Tamam", color = Color.Black, fontWeight = FontWeight.Bold)
+            }
+        },
         dismissButton = {
             TextButton(onClick = onDismiss) { Text("Close", color = Color.Gray) }
         }
@@ -3366,9 +3498,9 @@ fun CelestialCategoryPortal(
                 Icon(
                     imageVector = when(label) {
                         "Reading" -> Icons.Default.MenuBook
-                        "Read" -> Icons.Default.CheckCircle
-                        "To Read" -> Icons.Default.Star
-                        "On Hold" -> Icons.Default.Info
+                        "Completed" -> Icons.Default.CheckCircle
+                        "Plan To Read" -> Icons.Default.Star
+                        "On-hold" -> Icons.Default.Info
                         "Dropped" -> Icons.Default.Close
                         else -> Icons.Default.Book
                     },
@@ -3419,13 +3551,15 @@ fun CreatePostScreen(initialPostId: String? = null, onPost: () -> Unit, onDrafts
     var pendingPost by remember { mutableStateOf<Post?>(null) }
     var isDraftAction by remember { mutableStateOf(false) }
 
-    // Countdown for undo overlay, then navigate
+    // Countdown for undo overlay. Publish returns home, draft stays on Create screen.
     LaunchedEffect(undoTimer) {
         if (undoTimer != null && undoTimer!! > 0) {
             delay(1000L)
             undoTimer = undoTimer!! - 1
         } else if (undoTimer == 0) {
-            onPost()
+            if (!isDraftAction) {
+                onPost()
+            }
             undoTimer = null
             pendingPost = null
         }
@@ -3606,7 +3740,7 @@ fun CreatePostScreen(initialPostId: String? = null, onPost: () -> Unit, onDrafts
                     Spacer(modifier = Modifier.height(32.dp))
                     
                     // Rating Slider
-                    if (status != "To Read") {
+                    if (status != "Plan To Read") {
                         Column(
                             modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp),
                             horizontalAlignment = Alignment.CenterHorizontally
@@ -3628,7 +3762,7 @@ fun CreatePostScreen(initialPostId: String? = null, onPost: () -> Unit, onDrafts
 
                     Spacer(modifier = Modifier.height(16.dp))
 
-                    // Final Action Button
+                    // Final Action Buttons
                     val isReady = reviewText.isNotEmpty() && (selectedBook != null || selectedBookList != null) && status != null
                     val btnColor = when (status) {
                         "Read" -> PaginexNeonTeal
@@ -3636,24 +3770,90 @@ fun CreatePostScreen(initialPostId: String? = null, onPost: () -> Unit, onDrafts
                         "Dropped" -> PaginexNeonPink
                         else -> PaginexNeonTeal
                     }
-                    Surface(
-                        onClick = { if (isReady) showPublishDialog = true },
-                        enabled = isReady,
+                    Row(
                         modifier = Modifier
-                            .align(Alignment.CenterHorizontally)
-                            .padding(bottom = 32.dp)
-                            .size(200.dp, 56.dp),
-                        shape = RoundedCornerShape(28.dp),
-                        color = if (isReady) btnColor else PaginexGlass,
-                        border = BorderStroke(2.dp, if (isReady) Color.White else PaginexGlassBorder)
+                            .fillMaxWidth()
+                            .padding(bottom = 32.dp),
+                        horizontalArrangement = Arrangement.spacedBy(12.dp)
                     ) {
-                        Box(contentAlignment = Alignment.Center) {
+                        OutlinedButton(
+                            onClick = {
+                                if (isReady) {
+                                    val uid = AuthService.getUid()
+                                    val dummyBook = if (selectedBookList != null) {
+                                        Book(
+                                            id = selectedBookList!!.id,
+                                            title = selectedBookList!!.name,
+                                            author = "List by author",
+                                            coverUrl = selectedBookList!!.coverUrl,
+                                            genre = "Booklist"
+                                        )
+                                    } else {
+                                        selectedBook!!
+                                    }
+                                    val draftId = if (initialPostId != null && initialPostId.startsWith("draft_")) initialPostId else "draft_${System.currentTimeMillis()}"
+                                    pendingPost = Post(
+                                        id = draftId,
+                                        userId = uid,
+                                        book = dummyBook,
+                                        status = status ?: "Plan To Read",
+                                        rating = rating,
+                                        review = reviewText,
+                                        isBooklistPost = selectedBookList != null,
+                                        booklist = selectedBookList
+                                    )
+                                    pendingPost?.let { draft ->
+                                        if (initialPostId != null && initialPostId != draft.id) {
+                                            val oldDraftIdx = MockData.drafts.indexOfFirst { it.id == initialPostId }
+                                            if (oldDraftIdx != -1) MockData.drafts.removeAt(oldDraftIdx)
+                                        }
+                                        val existingDraftIdx = MockData.drafts.indexOfFirst { it.id == draft.id }
+                                        if (existingDraftIdx != -1) MockData.drafts[existingDraftIdx] = draft
+                                        else MockData.drafts.add(0, draft)
+                                        kotlinx.coroutines.MainScope().launch {
+                                            if (initialPostId != null && initialPostId != draft.id && initialPostId.startsWith("draft_")) {
+                                                FirestoreService.deleteDraft(initialPostId)
+                                            }
+                                            FirestoreService.createDraft(draft)
+                                        }
+                                    }
+                                    isDraftAction = true
+                                    undoTimer = 5
+                                }
+                            },
+                            enabled = isReady,
+                            modifier = Modifier
+                                .weight(1f)
+                                .height(56.dp),
+                            shape = RoundedCornerShape(28.dp),
+                            border = BorderStroke(2.dp, if (isReady) PaginexNeonPurple else PaginexGlassBorder)
+                        ) {
                             Text(
-                                "PUBLISH", 
-                                color = if (isReady) Color.Black else Color.Gray,
+                                "DRAFT",
+                                color = if (isReady) PaginexNeonPurple else Color.Gray,
                                 fontWeight = FontWeight.Black,
                                 fontSize = 14.sp
                             )
+                        }
+
+                        Surface(
+                            onClick = { if (isReady) showPublishDialog = true },
+                            enabled = isReady,
+                            modifier = Modifier
+                                .weight(1f)
+                                .height(56.dp),
+                            shape = RoundedCornerShape(28.dp),
+                            color = if (isReady) btnColor else PaginexGlass,
+                            border = BorderStroke(2.dp, if (isReady) Color.White else PaginexGlassBorder)
+                        ) {
+                            Box(contentAlignment = Alignment.Center) {
+                                Text(
+                                    "PUBLISH",
+                                    color = if (isReady) Color.Black else Color.Gray,
+                                    fontWeight = FontWeight.Black,
+                                    fontSize = 14.sp
+                                )
+                            }
                         }
                     }
                 }
@@ -3692,8 +3892,8 @@ fun CreatePostScreen(initialPostId: String? = null, onPost: () -> Unit, onDrafts
             AlertDialog(
                 onDismissRequest = { showPublishDialog = false },
                 containerColor = PaginexGalaxy,
-                title = { Text("Save your journey?", color = PaginexWhite) },
-                text = { Text("Do you want to draft or publish?", color = Color.Gray) },
+                title = { Text("Publish post?", color = PaginexWhite) },
+                text = { Text("Are you sure you want to publish?", color = Color.Gray) },
                 confirmButton = {
                     Button(
                         onClick = { 
@@ -3714,7 +3914,7 @@ fun CreatePostScreen(initialPostId: String? = null, onPost: () -> Unit, onDrafts
                                 id = "post_${System.currentTimeMillis()}",
                                 userId = uid,
                                 book = dummyBook,
-                                status = status ?: "To Read",
+                                status = status ?: "Plan To Read",
                                 rating = rating,
                                 review = reviewText,
                                 isBooklistPost = selectedBookList != null,
@@ -3731,7 +3931,8 @@ fun CreatePostScreen(initialPostId: String? = null, onPost: () -> Unit, onDrafts
                                     if (ei != -1) MockData.feedPosts.removeAt(ei)
                                     val edi = MockData.drafts.indexOfFirst { it.id == initialPostId }
                                     if (edi != -1) MockData.drafts.removeAt(edi)
-                                    FirestoreService.deletePost(initialPostId)
+                                    if (initialPostId.startsWith("draft_")) FirestoreService.deleteDraft(initialPostId)
+                                    else FirestoreService.deletePost(initialPostId)
                                 }
                                 FirestoreService.createPost(newPost)
                             }
@@ -3742,35 +3943,9 @@ fun CreatePostScreen(initialPostId: String? = null, onPost: () -> Unit, onDrafts
                 },
                 dismissButton = {
                     OutlinedButton(
-                        onClick = { 
-                            showPublishDialog = false
-                            val uid = AuthService.getUid()
-                            val dummyBook = if (selectedBookList != null) {
-                                Book(
-                                    id = selectedBookList!!.id,
-                                    title = selectedBookList!!.name,
-                                    author = "List by author",
-                                    coverUrl = selectedBookList!!.coverUrl,
-                                    genre = "Booklist"
-                                )
-                            } else {
-                                selectedBook!!
-                            }
-                            pendingPost = Post(
-                                id = "draft_${System.currentTimeMillis()}",
-                                userId = uid,
-                                book = dummyBook,
-                                status = status ?: "To Read",
-                                rating = rating,
-                                review = reviewText,
-                                isBooklistPost = selectedBookList != null,
-                                booklist = selectedBookList
-                            )
-                            isDraftAction = true
-                            undoTimer = 5
-                        },
-                        border = BorderStroke(1.dp, PaginexNeonPurple)
-                    ) { Text("Save as Draft", color = PaginexNeonPurple) }
+                        onClick = { showPublishDialog = false },
+                        border = BorderStroke(1.dp, PaginexGlassBorder)
+                    ) { Text("Cancel", color = PaginexWhite) }
                 }
             )
         }
@@ -3816,6 +3991,7 @@ fun CreatePostScreen(initialPostId: String? = null, onPost: () -> Unit, onDrafts
                             } else if (postToUndo != null && isDraftAction) {
                                 val idx = MockData.drafts.indexOfFirst { it.id == postToUndo.id }
                                 if (idx != -1) MockData.drafts.removeAt(idx)
+                                kotlinx.coroutines.MainScope().launch { FirestoreService.deleteDraft(postToUndo.id) }
                             }
                             undoTimer = null
                             pendingPost = null
@@ -3957,7 +4133,7 @@ fun ProfileMindMap(onClick: () -> Unit = {}) {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun DraftsScreen(onBack: () -> Unit) {
+fun DraftsScreen(onBack: () -> Unit, onEditDraft: (String) -> Unit = {}) {
     Scaffold(
         containerColor = PaginexSpace,
         topBar = {
@@ -4015,7 +4191,17 @@ fun DraftsScreen(onBack: () -> Unit) {
                             Spacer(modifier = Modifier.height(16.dp))
                             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
                                 OutlinedButton(
-                                    onClick = { MockData.drafts.remove(draft) },
+                                    onClick = { onEditDraft(draft.id) },
+                                    border = BorderStroke(1.dp, PaginexNeonTeal.copy(alpha = 0.5f))
+                                ) {
+                                    Text("Edit", color = PaginexNeonTeal)
+                                }
+                                Spacer(modifier = Modifier.width(12.dp))
+                                OutlinedButton(
+                                    onClick = {
+                                        MockData.drafts.remove(draft)
+                                        kotlinx.coroutines.MainScope().launch { FirestoreService.deleteDraft(draft.id) }
+                                    },
                                     colors = ButtonDefaults.outlinedButtonColors(contentColor = Color.Red),
                                     border = BorderStroke(1.dp, Color.Red.copy(alpha = 0.5f))
                                 ) {
@@ -4026,11 +4212,15 @@ fun DraftsScreen(onBack: () -> Unit) {
                                     onClick = {
                                         MockData.feedPosts.add(0, draft)
                                         MockData.drafts.remove(draft)
+                                        kotlinx.coroutines.MainScope().launch {
+                                            FirestoreService.createPost(draft)
+                                            FirestoreService.deleteDraft(draft.id)
+                                        }
                                         onBack()
                                     },
                                     colors = ButtonDefaults.buttonColors(containerColor = PaginexNeonPurple)
                                 ) {
-                                    Text("Yayınla", color = Color.Black)
+                                    Text("Publish", color = Color.Black)
                                 }
                             }
                         }
@@ -4542,6 +4732,105 @@ fun PublicProfileScreen(
         }
         if (showLibrary) {
             UserLibrarySheet(targetUserId = userId, onDismiss = { showLibrary = false })
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun PostListScreen(
+    postId: String, 
+    mode: String, 
+    onBack: () -> Unit,
+    onNavigateToDetail: (String) -> Unit,
+    onNavigateToUser: (String) -> Unit,
+    onNavigateToEdit: (String) -> Unit
+) {
+    val posts = remember(postId, mode, MockData.feedPosts.size) {
+        if (mode == "single") {
+            MockData.feedPosts.filter { it.id == postId }
+        } else if (mode == "saved_book") {
+            // Find the book from the clicked post ID in SavedPostsScreen
+            val bookId = MockData.feedPosts.find { it.id == postId }?.book?.id
+            MockData.feedPosts.filter { it.book.id == bookId && it.isSaved }
+        } else {
+            emptyList()
+        }
+    }
+    
+    val title = if (mode == "single") "My Post" else "Saved Posts"
+    val scope = rememberCoroutineScope()
+    val snackbarHostState = remember { SnackbarHostState() }
+
+    Scaffold(
+        containerColor = PaginexSpace,
+        topBar = {
+            TopAppBar(
+                title = { Text(title, color = PaginexWhite, fontWeight = FontWeight.Bold) },
+                navigationIcon = { IconButton(onClick = onBack) { Icon(Icons.Default.ArrowBack, null, tint = PaginexWhite) } },
+                colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.Transparent)
+            )
+        },
+        snackbarHost = { SnackbarHost(hostState = snackbarHostState) }
+    ) { padding ->
+        if (posts.isEmpty()) {
+            Box(modifier = Modifier.fillMaxSize().padding(padding), contentAlignment = Alignment.Center) {
+                Text("No posts found.", color = Color.Gray)
+            }
+        } else {
+            LazyColumn(
+                modifier = Modifier.fillMaxSize().padding(padding),
+                contentPadding = PaddingValues(16.dp)
+            ) {
+                items(posts, key = { it.id }) { post ->
+                    BookPostCard(
+                        post = post,
+                        onBookClick = { onNavigateToDetail(post.id) },
+                        onUserClick = onNavigateToUser,
+                        onEditClick = { onNavigateToEdit(post.id) },
+                        onDeleteClick = { postToDelete ->
+                            val now = System.currentTimeMillis()
+                            val diff = now - postToDelete.createdAt
+                            if (diff > 5 * 60 * 1000) {
+                                scope.launch {
+                                    snackbarHostState.showSnackbar("Posts can only be deleted within 5 minutes of creation.")
+                                }
+                            } else {
+                                MockData.feedPosts.removeAll { it.id == postToDelete.id }
+                                kotlinx.coroutines.MainScope().launch {
+                                    FirestoreService.deletePost(postToDelete.id)
+                                }
+                            }
+                        },
+                        onLikeClick = {
+                            val index = MockData.feedPosts.indexOfFirst { it.id == post.id }
+                            val newIsLiked = if (index != -1) !MockData.feedPosts[index].isLiked else !post.isLiked
+                            if (index != -1) {
+                                val currentPost = MockData.feedPosts[index]
+                                val newLikesCount = if (newIsLiked) currentPost.likesCount + 1 else (currentPost.likesCount - 1).coerceAtLeast(0)
+                                MockData.feedPosts[index] = currentPost.copy(
+                                    isLiked = newIsLiked,
+                                    likesCount = newLikesCount
+                                )
+                            }
+                            kotlinx.coroutines.MainScope().launch {
+                                FirestoreService.toggleLike(post.id, AuthService.getUid(), newIsLiked)
+                            }
+                        },
+                        onSaveClick = {
+                            val index = MockData.feedPosts.indexOfFirst { it.id == post.id }
+                            val newIsSaved = if (index != -1) !MockData.feedPosts[index].isSaved else !post.isSaved
+                            if (index != -1) {
+                                MockData.feedPosts[index] = MockData.feedPosts[index].copy(isSaved = newIsSaved)
+                            }
+                            kotlinx.coroutines.MainScope().launch {
+                                FirestoreService.toggleSave(post.id, AuthService.getUid(), newIsSaved)
+                            }
+                        }
+                    )
+                    Spacer(modifier = Modifier.height(16.dp))
+                }
+            }
         }
     }
 }
