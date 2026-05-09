@@ -12,6 +12,7 @@ import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.staggeredgrid.*
 import androidx.compose.foundation.shape.CircleShape
@@ -1324,9 +1325,26 @@ fun PaginexHomeScreen(
     var refreshTrigger by remember { mutableStateOf(0) }
     LaunchedEffect(refreshTrigger) {
         isRefreshing = true
-            FirestoreService.refreshSessionCacheFromFirestore()
-            isRefreshing = false
-            listState.scrollToItem(0)
+        FirestoreService.refreshSessionCacheFromFirestore()
+        isRefreshing = false
+        listState.scrollToItem(0)
+    }
+
+    val isScrollToEnd by remember {
+        derivedStateOf {
+            val totalItems = listState.layoutInfo.totalItemsCount
+            val lastVisible = listState.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: 0
+            totalItems > 0 && lastVisible >= totalItems - 3
+        }
+    }
+
+    var isLoadingMore by remember { mutableStateOf(false) }
+    LaunchedEffect(isScrollToEnd) {
+        if (isScrollToEnd && !FirestoreService.isFeedEndReached && !isLoadingMore) {
+            isLoadingMore = true
+            FirestoreService.loadMoreFeed()
+            isLoadingMore = false
+        }
     }
 
     LaunchedEffect(currentSortMode, isAscending) {
@@ -1521,6 +1539,14 @@ fun PaginexHomeScreen(
                         )
                         Spacer(modifier = Modifier.height(16.dp))
                     }
+                    
+                    if (isLoadingMore) {
+                        item {
+                            Box(modifier = Modifier.fillMaxWidth().padding(16.dp), contentAlignment = Alignment.Center) {
+                                CircularProgressIndicator(color = PaginexNeonPurple)
+                            }
+                        }
+                    }
                 }
             }
         }
@@ -1673,15 +1699,33 @@ fun ExploreScreen(onBookClick: (String) -> Unit = {}) {
                     bookMatchesExploreKeywords(book, searchKeywords)
             }
     
+            var exploreBooksLimit by remember { mutableIntStateOf(20) }
+            val staggeredGridState = rememberLazyStaggeredGridState()
+            val isBooksScrollToEnd by remember {
+                derivedStateOf {
+                    val totalItems = staggeredGridState.layoutInfo.totalItemsCount
+                    val lastVisible = staggeredGridState.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: 0
+                    totalItems > 0 && lastVisible >= totalItems - 4
+                }
+            }
+            LaunchedEffect(isBooksScrollToEnd) {
+                if (isBooksScrollToEnd) exploreBooksLimit += 20
+            }
+            LaunchedEffect(searchQuery, selectedGenre) {
+                exploreBooksLimit = 20
+                staggeredGridState.scrollToItem(0)
+            }
+
             // Dynamic Staggered Grid
             LazyVerticalStaggeredGrid(
+                state = staggeredGridState,
                 columns = StaggeredGridCells.Fixed(2),
                 modifier = Modifier.fillMaxSize().padding(horizontal = 8.dp),
                 contentPadding = PaddingValues(8.dp),
                 horizontalArrangement = Arrangement.spacedBy(12.dp),
                 verticalItemSpacing = 12.dp
             ) {
-                items(filteredBooks, key = { it.id }) { book ->
+                items(filteredBooks.take(exploreBooksLimit), key = { it.id }) { book ->
                 // Keep card height deterministic per book to avoid jitter/glitches on recomposition.
                 val cardHeight = ((kotlin.math.abs(book.id.hashCode()) % 151) + 200).dp
                 Box(
@@ -1729,7 +1773,25 @@ fun ExploreScreen(onBookClick: (String) -> Unit = {}) {
                 user.isActive && userMatchesExploreKeywords(user, searchKeywords)
             }
             
+            var exploreUsersLimit by remember { mutableIntStateOf(20) }
+            val listState = rememberLazyListState()
+            val isUsersScrollToEnd by remember {
+                derivedStateOf {
+                    val totalItems = listState.layoutInfo.totalItemsCount
+                    val lastVisible = listState.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: 0
+                    totalItems > 0 && lastVisible >= totalItems - 4
+                }
+            }
+            LaunchedEffect(isUsersScrollToEnd) {
+                if (isUsersScrollToEnd) exploreUsersLimit += 20
+            }
+            LaunchedEffect(searchQuery) {
+                exploreUsersLimit = 20
+                listState.scrollToItem(0)
+            }
+            
             LazyColumn(
+                state = listState,
                 modifier = Modifier.fillMaxSize().padding(horizontal = 16.dp),
                 verticalArrangement = Arrangement.spacedBy(16.dp),
                 contentPadding = PaddingValues(bottom = 32.dp)
@@ -1739,7 +1801,7 @@ fun ExploreScreen(onBookClick: (String) -> Unit = {}) {
                         Text("No users found.", color = PaginexWhite.copy(alpha = 0.7f), modifier = Modifier.padding(16.dp))
                     }
                 }
-                items(filteredUsers, key = { it.id }) { user ->
+                items(filteredUsers.take(exploreUsersLimit), key = { it.id }) { user ->
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -2620,13 +2682,31 @@ fun SavedPostsScreen(onBookClick: (String) -> Unit = {}) {
         }
         Spacer(modifier = Modifier.height(16.dp))
         
+        var savedLimit by remember { mutableIntStateOf(20) }
+        val gridState = rememberLazyGridState()
+        val isScrollToEnd by remember {
+            derivedStateOf {
+                val totalItems = gridState.layoutInfo.totalItemsCount
+                val lastVisible = gridState.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: 0
+                totalItems > 0 && lastVisible >= totalItems - 4
+            }
+        }
+        LaunchedEffect(isScrollToEnd) {
+            if (isScrollToEnd) savedLimit += 20
+        }
+        LaunchedEffect(searchQuery) {
+            savedLimit = 20
+            gridState.scrollToItem(0)
+        }
+
         LazyVerticalGrid(
+            state = gridState,
             columns = GridCells.Fixed(2),
             horizontalArrangement = Arrangement.spacedBy(16.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp),
             contentPadding = PaddingValues(bottom = 16.dp)
         ) {
-            items(uniquePosts, key = { it.id }) { post ->
+            items(uniquePosts.take(savedLimit), key = { it.id }) { post ->
                 CosmicPlanet(
                     book = post.book,
                     size = 120.dp,
@@ -5103,6 +5183,32 @@ fun PublicProfileScreen(
     var showLibrary by remember { mutableStateOf(false) }
     
     val userFeed = remember { mutableStateListOf<Post>() }
+    var lastUserPostDoc by remember { mutableStateOf<com.google.firebase.firestore.DocumentSnapshot?>(null) }
+    var isUserFeedEndReached by remember { mutableStateOf(false) }
+    var isLoadingMore by remember { mutableStateOf(false) }
+    val listState = rememberLazyListState()
+
+    val isScrollToEnd by remember {
+        derivedStateOf {
+            val totalItems = listState.layoutInfo.totalItemsCount
+            val lastVisible = listState.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: 0
+            totalItems > 0 && lastVisible >= totalItems - 3
+        }
+    }
+
+    LaunchedEffect(isScrollToEnd) {
+        if (isScrollToEnd && !isUserFeedEndReached && !isLoadingMore) {
+            isLoadingMore = true
+            val (newPosts, nextDoc) = FirestoreService.getUserPosts(userId, limit = 10, startAfterDoc = lastUserPostDoc)
+            if (newPosts.isNotEmpty()) {
+                val existingIds = userFeed.map { it.id }.toSet()
+                userFeed.addAll(newPosts.filter { !existingIds.contains(it.id) })
+                lastUserPostDoc = nextDoc
+            }
+            if (newPosts.size < 10) isUserFeedEndReached = true
+            isLoadingMore = false
+        }
+    }
     
     val infiniteTransition = rememberInfiniteTransition()
     val rotation by infiniteTransition.animateFloat(
@@ -5123,9 +5229,11 @@ fun PublicProfileScreen(
             viewer.isNotBlank() && userId != viewer && FirestoreService.isFollowing(viewer, userId)
         user = profile
         if (profile != null) {
-            val posts = FirestoreService.getFeed()
+            val (posts, lastDoc) = FirestoreService.getUserPosts(userId, limit = 10)
             userFeed.clear()
-            userFeed.addAll(posts.filter { it.userId == userId })
+            userFeed.addAll(posts)
+            lastUserPostDoc = lastDoc
+            if (posts.size < 10) isUserFeedEndReached = true
         }
         followStatusReady = true
     }
@@ -5156,6 +5264,7 @@ fun PublicProfileScreen(
         val u = user!!
 
         LazyColumn(
+            state = listState,
             modifier = Modifier.fillMaxSize().padding(padding).background(PaginexSpace),
             contentPadding = PaddingValues(bottom = 100.dp)
         ) {
@@ -5289,6 +5398,13 @@ fun PublicProfileScreen(
                     onBookClick = { onPostClick(post.id) }
                 )
                 Spacer(modifier = Modifier.height(16.dp))
+            }
+            if (isLoadingMore) {
+                item {
+                    Box(modifier = Modifier.fillMaxWidth().padding(16.dp), contentAlignment = Alignment.Center) {
+                        CircularProgressIndicator(color = PaginexNeonPurple)
+                    }
+                }
             }
         }
 

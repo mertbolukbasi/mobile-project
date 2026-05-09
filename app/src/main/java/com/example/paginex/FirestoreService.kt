@@ -14,6 +14,9 @@ object FirestoreService {
     private val db = FirebaseFirestore.getInstance()
     private const val TAG = "FirestoreService"
     private var usersListener: ListenerRegistration? = null
+    
+    var lastVisibleFeedDoc: DocumentSnapshot? = null
+    var isFeedEndReached = false
 
     private fun deletedUserPlaceholder(userId: String) = User(
         id = userId,
@@ -265,9 +268,30 @@ object FirestoreService {
     // READ OPERATIONS
     // ========================
 
-    suspend fun getFeed(): List<Post> {
+    suspend fun getFeed(limit: Int = 10, isNextPage: Boolean = false): List<Post> {
         return try {
-            val postsSnap = db.collection("posts").orderBy("createdAt").get().await()
+            var query = db.collection("posts")
+                .orderBy("createdAt", com.google.firebase.firestore.Query.Direction.DESCENDING)
+                .limit(limit.toLong())
+
+            if (isNextPage && lastVisibleFeedDoc != null) {
+                query = query.startAfter(lastVisibleFeedDoc!!)
+            } else if (!isNextPage) {
+                lastVisibleFeedDoc = null
+                isFeedEndReached = false
+            }
+
+            val postsSnap = query.get().await()
+            if (postsSnap.isEmpty) {
+                isFeedEndReached = true
+                return emptyList()
+            }
+
+            lastVisibleFeedDoc = postsSnap.documents.lastOrNull()
+            if (postsSnap.size() < limit) {
+                isFeedEndReached = true
+            }
+
             val posts = mutableListOf<Post>()
             val currentUserId = AuthService.getUid()
 
@@ -396,6 +420,88 @@ object FirestoreService {
         } catch (e: Exception) {
             Log.e(TAG, "Error getting feed", e)
             emptyList()
+        }
+    }
+
+    suspend fun loadMoreFeed() {
+        if (isFeedEndReached) return
+        val newPosts = getFeed(isNextPage = true)
+        if (newPosts.isNotEmpty()) {
+            val existingIds = AppCache.feedPosts.map { it.id }.toSet()
+            AppCache.feedPosts.addAll(newPosts.filter { !existingIds.contains(it.id) })
+        }
+    }
+
+    suspend fun getUserPosts(userId: String, limit: Int = 10, startAfterDoc: DocumentSnapshot? = null): Pair<List<Post>, DocumentSnapshot?> {
+        return try {
+            var query = db.collection("posts")
+                .whereEqualTo("userId", userId)
+                .orderBy("createdAt", com.google.firebase.firestore.Query.Direction.DESCENDING)
+                .limit(limit.toLong())
+
+            if (startAfterDoc != null) {
+                query = query.startAfter(startAfterDoc)
+            }
+
+            val postsSnap = query.get().await()
+            if (postsSnap.isEmpty) {
+                return Pair(emptyList(), startAfterDoc)
+            }
+
+            val lastDoc = postsSnap.documents.lastOrNull()
+
+            val posts = mutableListOf<Post>()
+            val currentUserId = AuthService.getUid()
+
+            val booksSnap = db.collection("books").get().await()
+            val booksMap = booksSnap.toObjects(FireBook::class.java).associateBy { it.id }
+
+            val userLikesSnap = db.collection("likes").whereEqualTo("userId", currentUserId).get().await()
+            val userLikedTableIds = userLikesSnap.documents.mapNotNull { it.getString("tableId") }.toSet()
+
+            val userSavesSnap = db.collection("saves").whereEqualTo("userId", currentUserId).get().await()
+            val userSavedTableIds = userSavesSnap.documents.mapNotNull { it.getString("tableId") }.toSet()
+
+            val allLikesSnap = db.collection("likes").get().await()
+            val likesCountMap = allLikesSnap.documents.groupBy { it.getString("tableId") ?: "" }.mapValues { it.value.size }
+
+            val allCommentsSnap = db.collection("comments").get().await()
+            val commentsCountMap = allCommentsSnap.documents.groupBy { it.getString("tableId") ?: "" }.mapValues { it.value.size }
+
+            for (doc in postsSnap.documents) {
+                val id = doc.getString("id") ?: ""
+                val postUserId = doc.getString("userId") ?: ""
+                val description = doc.getString("description") ?: ""
+                val rating = doc.getDouble("rating")?.toFloat() ?: 0f
+                val bookId = doc.getString("bookId") ?: ""
+                val status = doc.getString("status") ?: "Plan To Read"
+                val createdAt = doc.getTimestamp("createdAt")?.toDate()?.time ?: System.currentTimeMillis()
+                val booklistId = doc.getString("booklistId")
+
+                val fireBook = booksMap[bookId]
+                val isLiked = userLikedTableIds.contains(id)
+                val isSaved = userSavedTableIds.contains(id)
+
+                val totalLikes = likesCountMap[id] ?: 0
+                val totalComments = commentsCountMap[id] ?: 0
+
+                if (fireBook != null && booklistId.isNullOrEmpty()) {
+                    val book = Book(
+                        id = fireBook.id, title = fireBook.title, author = fireBook.author, coverUrl = fireBook.coverUrl,
+                        genre = fireBook.genre, publishYear = fireBook.publishYear?.toDate()?.let {
+                            val cal = Calendar.getInstance(); cal.time = it; cal.get(Calendar.YEAR)
+                        } ?: 2020, summary = fireBook.summary, isbn = fireBook.isbn
+                    )
+                    posts.add(Post(
+                        id = id, userId = postUserId, book = book, status = status, rating = rating, review = description,
+                        createdAt = createdAt, isLiked = isLiked, isSaved = isSaved, likesCount = totalLikes, commentsCount = totalComments
+                    ))
+                }
+            }
+            Pair(posts, lastDoc)
+        } catch (e: Exception) {
+            Log.e(TAG, "Error getting user posts", e)
+            Pair(emptyList(), startAfterDoc)
         }
     }
 
