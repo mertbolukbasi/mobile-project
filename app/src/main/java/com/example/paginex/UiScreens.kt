@@ -440,11 +440,13 @@ fun MainTabsPager(
         }
     }
 
+    val onTabSettledState by rememberUpdatedState(onTabSettled)
+
     LaunchedEffect(pagerState) {
         snapshotFlow { pagerState.settledPage }
             .distinctUntilChanged()
             .collectLatest { page ->
-                if (page != selectedTabIndex) onTabSettled(page)
+                onTabSettledState(page)
             }
     }
 
