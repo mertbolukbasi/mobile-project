@@ -125,8 +125,8 @@ fun UserLibrarySheet(
     onDismiss: () -> Unit
 ) {
     val isOwner = targetUserId == AuthService.getUid()
-    val library = remember(targetUserId, MockData.readingStatuses.size, MockData.readingStatuses.toList()) {
-        MockData.readingStatuses.filter { it.userId == targetUserId }.sortedByDescending { it.addedAt }
+    val library = remember(targetUserId, AppCache.readingStatuses.size, AppCache.readingStatuses.toList()) {
+        AppCache.readingStatuses.filter { it.userId == targetUserId }.sortedByDescending { it.addedAt }
     }
     val normalizedStatuses = listOf("All", "Completed", "Reading", "Plan To Read", "On-hold", "Dropped")
     var selectedStatus by remember { mutableStateOf("All") }
@@ -201,9 +201,9 @@ fun UserLibrarySheet(
                             isOwner = isOwner,
                             onStatusChange = { newStatus ->
                                 // Update local cache immediately
-                                val idx = MockData.readingStatuses.indexOfFirst { it.id == status.id }
+                                val idx = AppCache.readingStatuses.indexOfFirst { it.id == status.id }
                                 if (idx != -1) {
-                                    MockData.readingStatuses[idx] = status.copy(status = newStatus)
+                                    AppCache.readingStatuses[idx] = status.copy(status = newStatus)
                                 }
                                 // Write to Firestore in GlobalScope (survives sheet dismissal)
                                 kotlinx.coroutines.MainScope().launch {
@@ -215,7 +215,7 @@ fun UserLibrarySheet(
                                 kotlinx.coroutines.MainScope().launch {
                                     val success = FirestoreService.deleteBookFromLibrary(targetUserId, status.book.id)
                                     if (success) {
-                                        MockData.readingStatuses.removeAll { it.userId == targetUserId && it.book.id == status.book.id }
+                                        AppCache.readingStatuses.removeAll { it.userId == targetUserId && it.book.id == status.book.id }
                                     } else {
                                         deleteError = "Cannot delete \"${status.book.title}\" — you have posts or it is in a booklist."
                                     }
@@ -313,8 +313,8 @@ fun LibrarySelectorSheet(
     onBookSelected: (ReadingStatus) -> Unit
 ) {
     var searchQuery by remember { mutableStateOf("") }
-    val library = remember(targetUserId, MockData.readingStatuses.size) {
-        MockData.readingStatuses.filter { it.userId == targetUserId }
+    val library = remember(targetUserId, AppCache.readingStatuses.size) {
+        AppCache.readingStatuses.filter { it.userId == targetUserId }
     }
     
     val filteredLibrary = library.filter { 
@@ -382,8 +382,8 @@ fun BookListSelectorSheet(
     onListSelected: (BookList) -> Unit
 ) {
     var searchQuery by remember { mutableStateOf("") }
-    val bookLists = remember(targetUserId, MockData.sampleBookLists.size) {
-        MockData.sampleBookLists.filter { it.userId == targetUserId }
+    val bookLists = remember(targetUserId, AppCache.bookLists.size) {
+        AppCache.bookLists.filter { it.userId == targetUserId }
     }
     
     val filteredLists = bookLists.filter { 

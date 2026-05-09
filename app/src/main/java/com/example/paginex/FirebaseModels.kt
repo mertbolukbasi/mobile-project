@@ -122,3 +122,16 @@ data class FireFavouriteBooks(
     val createdAt: Timestamp = Timestamp.now(),
     val updatedAt: Timestamp = Timestamp.now()
 )
+
+fun FireUser?.uiDisplayName(): String = when {
+    this == null -> "Deleted user"
+    !isActive -> "Deleted user"
+    else -> "${name.trim()} ${surname.trim()}".trim().ifBlank { "User" }
+}
+
+fun FireUser?.uiDisplayHandle(): String = when {
+    this == null -> "@deleted_user"
+    !isActive -> "@deleted_user"
+    username.isNotBlank() -> "@$username"
+    else -> "@user"
+}

@@ -350,20 +350,21 @@ fun BookPostCard(
                         .clickable { onUserClick(post.userId) }
                 ) {
                     Text(
-                        text = postAuthor?.let { "${it.name} ${it.surname}" } ?: "Loading...",
+                        text = if (followStatusReady) postAuthor.uiDisplayName() else "Loading...",
                         fontWeight = FontWeight.Bold,
                         fontSize = 18.sp,
                         color = PaginexWhite
                     )
                     Text(
-                        text = postAuthor?.let { "@${it.username}" } ?: "@user",
+                        text = if (followStatusReady) postAuthor.uiDisplayHandle() else "@user",
                         fontSize = 14.sp,
                         color = PaginexWhite.copy(alpha = 0.7f)
                     )
                 }
                 
                 val currentUid = AuthService.getUid()
-                if (currentUid.isNotBlank() && post.userId != currentUid && followStatusReady) {
+                val canFollow = postAuthor?.isActive == true
+                if (currentUid.isNotBlank() && post.userId != currentUid && followStatusReady && canFollow) {
                     TextButton(
                         onClick = {
                             scope.launch {
@@ -372,14 +373,14 @@ fun BookPostCard(
                                 if (isFollowing) {
                                     if (!FirestoreService.unfollowUser(me, post.userId)) return@launch
                                     isFollowing = false
-                                    MockData.currentUser = MockData.currentUser.copy(
-                                        followingCount = (MockData.currentUser.followingCount - 1).coerceAtLeast(0)
+                                    AppCache.currentUser = AppCache.currentUser.copy(
+                                        followingCount = (AppCache.currentUser.followingCount - 1).coerceAtLeast(0)
                                     )
                                 } else {
                                     if (!FirestoreService.followUser(me, post.userId)) return@launch
                                     isFollowing = true
-                                    MockData.currentUser = MockData.currentUser.copy(
-                                        followingCount = MockData.currentUser.followingCount + 1
+                                    AppCache.currentUser = AppCache.currentUser.copy(
+                                        followingCount = AppCache.currentUser.followingCount + 1
                                     )
                                 }
                             }
@@ -396,7 +397,7 @@ fun BookPostCard(
                 }
 
                 var menuExpanded by remember { mutableStateOf(false) }
-                val isOwnPost = post.userId == MockData.currentUser.id
+                val isOwnPost = post.userId == AppCache.currentUser.id
 
                 if (isOwnPost) {
                     Box {

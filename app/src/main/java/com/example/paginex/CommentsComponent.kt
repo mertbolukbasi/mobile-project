@@ -266,7 +266,11 @@ fun CommentItem(
     onReplyClick: () -> Unit = {},
     onLikeClick: () -> Unit = {}
 ) {
-    val displayName = if (user != null) "@${user.username}" else "@user_${comment.userId}"
+    val displayName = when {
+        user == null -> "@user_${comment.userId}"
+        !user.isActive -> "@deleted_user"
+        else -> "@${user.username}"
+    }
     val avatarUrl = user?.avatarUrl ?: ""
 
     val timeText = remember(comment.createdAt) {

@@ -15,7 +15,9 @@ data class User(
     val joinDate: String = "",
     val followingCount: Int = 0,
     val followersCount: Int = 0,
-    val favoriteBooks: List<String> = emptyList()
+    val favoriteBooks: List<String> = emptyList(),
+    /** False when the profile was soft-deleted in Firestore ([FirestoreService.deleteUserData]) or the user doc is missing. */
+    val isActive: Boolean = true
 )
 
 data class Book(
@@ -69,8 +71,8 @@ data class ReadingStatus(
     val addedAt: Long = System.currentTimeMillis()
 )
 
-// --- REACTIVE LOCAL CACHE (populated from Firestore via syncMockData) ---
-object MockData {
+/** In-memory session state synced from Firestore (see [FirestoreService.refreshSessionCacheFromFirestore]). */
+object AppCache {
     var currentUser by mutableStateOf(User(
         id = "",
         username = "",
@@ -78,11 +80,11 @@ object MockData {
         avatarUrl = ""
     ))
 
-    val sampleBooks = mutableStateListOf<Book>()
+    val books = mutableStateListOf<Book>()
     val feedPosts = mutableStateListOf<Post>()
     val explorePosts = mutableStateListOf<String>()
-    val sampleBookLists = mutableStateListOf<BookList>()
-    val sampleUsers = mutableStateListOf<User>()
+    val bookLists = mutableStateListOf<BookList>()
+    val users = mutableStateListOf<User>()
     val drafts = mutableStateListOf<Post>()
     val readingStatuses = mutableStateListOf<ReadingStatus>()
 }

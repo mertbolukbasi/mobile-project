@@ -2,7 +2,9 @@ package com.example.paginex
 
 import android.util.Log
 import com.google.firebase.Timestamp
+import com.google.firebase.firestore.DocumentSnapshot
 import com.google.firebase.firestore.FirebaseFirestore
+import com.google.firebase.firestore.ListenerRegistration
 import kotlinx.coroutines.*
 import kotlinx.coroutines.tasks.await
 import java.util.Calendar
@@ -11,6 +13,61 @@ import java.util.Date
 object FirestoreService {
     private val db = FirebaseFirestore.getInstance()
     private const val TAG = "FirestoreService"
+    private var usersListener: ListenerRegistration? = null
+
+    private fun deletedUserPlaceholder(userId: String) = User(
+        id = userId,
+        username = "deleted_user",
+        fullName = "Deleted user",
+        avatarUrl = "",
+        bio = "",
+        location = "",
+        joinDate = "",
+        followingCount = 0,
+        followersCount = 0,
+        favoriteBooks = emptyList(),
+        isActive = false
+    )
+
+    private fun userFromFirestoreDoc(doc: DocumentSnapshot): User? {
+        val fu = doc.toObject(FireUser::class.java) ?: return null
+        val id = fu.id.takeIf { it.isNotBlank() } ?: doc.id
+        if (id.isBlank()) return null
+        val active = fu.isActive
+        return User(
+            id = id,
+            username = if (active) fu.username else "deleted_user",
+            fullName = if (active) "${fu.name} ${fu.surname}" else "Deleted user",
+            avatarUrl = if (active) fu.avatarUrl else "",
+            bio = if (active) fu.bio else "",
+            location = if (active) fu.location else "",
+            joinDate = "",
+            followingCount = 0,
+            followersCount = 0,
+            favoriteBooks = if (active) fu.favoriteBooks else emptyList(),
+            isActive = active
+        )
+    }
+
+    /** Keeps [AppCache.users] in sync when users are added/removed in Firestore (e.g. console delete). */
+    fun attachUsersRealtimeListener() {
+        usersListener?.remove()
+        usersListener = db.collection("users").addSnapshotListener { snapshot, error ->
+            if (error != null) {
+                Log.e(TAG, "users snapshot listener error", error)
+                return@addSnapshotListener
+            }
+            val snap = snapshot ?: return@addSnapshotListener
+            val list = snap.documents.mapNotNull { userFromFirestoreDoc(it) }.filter { it.isActive }
+            AppCache.users.clear()
+            AppCache.users.addAll(list)
+        }
+    }
+
+    fun detachUsersRealtimeListener() {
+        usersListener?.remove()
+        usersListener = null
+    }
 
     // ========================
     // SEED DATA INITIALIZATION
@@ -280,7 +337,7 @@ object FirestoreService {
                     ))
                 } else if (!booklistId.isNullOrEmpty()) {
                     // Try to fetch booklist
-                    // It will rely on syncMockData's sampleBookLists to later resolve, or we fetch here
+                    // It will rely on refreshSessionCacheFromFirestore's bookLists to later resolve, or we fetch here
                     val listDoc = try { db.collection("booklists").document(booklistId).get().await() } catch (e: Exception) { null }
                     if (listDoc != null && listDoc.exists()) {
                         val fireList = listDoc.toObject(FireBookList::class.java)
@@ -345,33 +402,38 @@ object FirestoreService {
     suspend fun getUserProfile(userId: String): User? {
         return try {
             val userDoc = db.collection("users").document(userId).get().await()
+            if (!userDoc.exists()) {
+                return deletedUserPlaceholder(userId)
+            }
             val fireUser = userDoc.toObject(FireUser::class.java)
-            if (fireUser != null) {
-                // Get follower/following counts
-                val followersCount = db.collection("follows")
-                    .whereEqualTo("followingId", userId)
-                    .get().await().size()
-                val followingCount = db.collection("follows")
-                    .whereEqualTo("followerId", userId)
-                    .get().await().size()
+                ?: return deletedUserPlaceholder(userId)
+            val active = fireUser.isActive
+            val followersCount = db.collection("follows")
+                .whereEqualTo("followingId", userId)
+                .get().await().size()
+            val followingCount = db.collection("follows")
+                .whereEqualTo("followerId", userId)
+                .get().await().size()
 
-                User(
-                    id = fireUser.id.ifBlank { userId },
-                    username = fireUser.username,
-                    fullName = "${fireUser.name} ${fireUser.surname}",
-                    avatarUrl = fireUser.avatarUrl,
-                    bio = fireUser.bio,
-                    location = fireUser.location,
-                    joinDate = "Joined: ${fireUser.createdAt.toDate().let {
+            User(
+                id = fireUser.id.ifBlank { userId },
+                username = if (active) fireUser.username else "deleted_user",
+                fullName = if (active) "${fireUser.name} ${fireUser.surname}" else "Deleted user",
+                avatarUrl = if (active) fireUser.avatarUrl else "",
+                bio = if (active) fireUser.bio else "",
+                location = if (active) fireUser.location else "",
+                joinDate = if (active) {
+                    "Joined: ${fireUser.createdAt.toDate().let {
                         val cal = Calendar.getInstance(); cal.time = it
                         val months = listOf("January","February","March","April","May","June","July","August","September","October","November","December")
                         "${months[cal.get(Calendar.MONTH)]} ${cal.get(Calendar.YEAR)}"
-                    }}",
-                    followersCount = followersCount,
-                    followingCount = followingCount,
-                    favoriteBooks = fireUser.favoriteBooks
-                )
-            } else null
+                    }}"
+                } else "",
+                followersCount = followersCount,
+                followingCount = followingCount,
+                favoriteBooks = if (active) fireUser.favoriteBooks else emptyList(),
+                isActive = active
+            )
         } catch (e: Exception) {
             Log.e(TAG, "Error getting user profile", e)
             null
@@ -381,6 +443,7 @@ object FirestoreService {
     suspend fun getUserById(userId: String): FireUser? {
         return try {
             val doc = db.collection("users").document(userId).get().await()
+            if (!doc.exists()) return null
             val u = doc.toObject(FireUser::class.java) ?: return null
             if (u.id.isBlank()) u.copy(id = doc.id) else u
         } catch (e: Exception) {
@@ -1122,10 +1185,10 @@ object FirestoreService {
     }
 
     // ========================
-    // SYNC (Firestore → MockData cache)
+    // SYNC: Firestore → AppCache (in-memory session mirror)
     // ========================
 
-    suspend fun syncMockData() {
+    suspend fun refreshSessionCacheFromFirestore() {
         try {
             val currentUserId = AuthService.getUid()
             withContext(kotlinx.coroutines.NonCancellable) {
@@ -1150,34 +1213,22 @@ object FirestoreService {
                 val savedBookIds = userSavedIdsInitial.filter { !allListIdSet.contains(it) }.toSet()
 
                 val books = booksDef.await().map { it.copy(isSaved = savedBookIds.contains(it.id)) }
-                MockData.sampleBooks.clear()
-                MockData.sampleBooks.addAll(books)
+                AppCache.books.clear()
+                AppCache.books.addAll(books)
 
                 val allUsersSnap = allUsersDef.await()
-                val fireUsers = allUsersSnap.toObjects(FireUser::class.java)
-                MockData.sampleUsers.clear()
-                MockData.sampleUsers.addAll(fireUsers.map { fu ->
-                    User(
-                        id = fu.id,
-                        username = fu.username,
-                        fullName = "${fu.name} ${fu.surname}",
-                        avatarUrl = fu.avatarUrl,
-                        bio = fu.bio,
-                        location = fu.location,
-                        joinDate = "",
-                        followingCount = 0,
-                        followersCount = 0,
-                        favoriteBooks = emptyList()
-                    )
-                })
+                AppCache.users.clear()
+                AppCache.users.addAll(
+                    allUsersSnap.documents.mapNotNull { userFromFirestoreDoc(it) }.filter { it.isActive }
+                )
 
                 val posts = postsDef.await()
-                MockData.feedPosts.clear()
-                MockData.feedPosts.addAll(posts)
+                AppCache.feedPosts.clear()
+                AppCache.feedPosts.addAll(posts)
 
                 val user = userDef.await()
                 if (user != null) {
-                    MockData.currentUser = user
+                    AppCache.currentUser = user
                 }
 
                 val listsSnap = listsSnapEarly
@@ -1194,7 +1245,7 @@ object FirestoreService {
                 val allLikesSnap = db.collection("likes").get().await()
                 val listLikesCount = allLikesSnap.documents.groupBy { it.getString("tableId") ?: "" }.mapValues { it.value.size }
 
-                MockData.sampleBookLists.clear()
+                AppCache.bookLists.clear()
                 
                 // All booklist IDs loaded from Firestore
                 val allListIds = fireLists.map { it.id }.toSet()
@@ -1212,10 +1263,10 @@ object FirestoreService {
                         val junctionSnap = db.collection("booklist_books").whereEqualTo("booklistId", fl.id).get().await()
                         junctionSnap.documents.forEach { jDoc ->
                             val bId = jDoc.getString("bookId")
-                            MockData.sampleBooks.find { it.id == bId }?.let { booksInList.add(it) }
+                            AppCache.books.find { it.id == bId }?.let { booksInList.add(it) }
                         }
 
-                        MockData.sampleBookLists.add(BookList(
+                        AppCache.bookLists.add(BookList(
                             id = fl.id,
                             userId = fl.userId,
                             name = fl.name,
@@ -1233,22 +1284,22 @@ object FirestoreService {
 
                 val exploreSnap = exploreSnapDef.await()
                 val exploreImages = exploreSnap.toObjects(FireImage::class.java).map { it.path }
-                MockData.explorePosts.clear()
-                MockData.explorePosts.addAll(exploreImages)
+                AppCache.explorePosts.clear()
+                AppCache.explorePosts.addAll(exploreImages)
                 
                 val statuses = statusesDef.await()
-                MockData.readingStatuses.clear()
-                MockData.readingStatuses.addAll(statuses)
+                AppCache.readingStatuses.clear()
+                AppCache.readingStatuses.addAll(statuses)
 
                 val drafts = draftsDef.await()
-                MockData.drafts.clear()
-                MockData.drafts.addAll(drafts)
+                AppCache.drafts.clear()
+                AppCache.drafts.addAll(drafts)
 
                 // Harmonization:
                 // If a post exists but the book isn't formally on the user's shelf, add it organically to the shelf.
                 // Skip booklist type posts — their book is a dummy and should never go to the shelf.
-                MockData.feedPosts.filter { !it.isBooklistPost }.forEach { post ->
-                    val onShelf = MockData.readingStatuses.any { it.userId == post.userId && it.book.id == post.book.id }
+                AppCache.feedPosts.filter { !it.isBooklistPost }.forEach { post ->
+                    val onShelf = AppCache.readingStatuses.any { it.userId == post.userId && it.book.id == post.book.id }
                     if (!onShelf) {
                         val generatedStatus = ReadingStatus(
                             id = "rs_auto_${post.id}",
@@ -1257,7 +1308,7 @@ object FirestoreService {
                             status = post.status,
                             addedAt = System.currentTimeMillis()
                         )
-                        MockData.readingStatuses.add(generatedStatus)
+                        AppCache.readingStatuses.add(generatedStatus)
                         launch(Dispatchers.IO) { addBookToLibrary(post.userId, post.book.id, post.status) }
                     }
                 }
@@ -1298,9 +1349,9 @@ object FirestoreService {
                     }
                 }
             }
-            Log.d(TAG, "MockData fully synced with Firestore in parallel")
+            Log.d(TAG, "AppCache fully synced with Firestore in parallel")
         } catch (e: Exception) {
-            Log.e(TAG, "Error syncing MockData", e)
+            Log.e(TAG, "Error syncing AppCache", e)
         }
     }
 }

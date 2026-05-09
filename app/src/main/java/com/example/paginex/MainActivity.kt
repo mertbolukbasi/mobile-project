@@ -44,7 +44,14 @@ class MainActivity : ComponentActivity() {
             
             LaunchedEffect(Unit) {
                 FirestoreService.initializeData(forceReset = false)
-                FirestoreService.syncMockData()
+                FirestoreService.refreshSessionCacheFromFirestore()
+            }
+
+            DisposableEffect(Unit) {
+                FirestoreService.attachUsersRealtimeListener()
+                onDispose {
+                    FirestoreService.detachUsersRealtimeListener()
+                }
             }
 
             CompositionLocalProvider(
