@@ -38,6 +38,20 @@ object AuthService {
         }
     }
 
+    suspend fun sendPasswordResetEmail(email: String): Result<Unit> {
+        val trimmed = email.trim()
+        if (trimmed.isBlank()) {
+            return Result.failure(Exception("Please enter your email"))
+        }
+        return try {
+            auth.sendPasswordResetEmail(trimmed).await()
+            Result.success(Unit)
+        } catch (e: Exception) {
+            Log.e(TAG, "Error sending password reset email", e)
+            Result.failure(e)
+        }
+    }
+
     suspend fun signUp(email: String, password: String): Result<String> {
         return try {
             val result = auth.createUserWithEmailAndPassword(email, password).await()

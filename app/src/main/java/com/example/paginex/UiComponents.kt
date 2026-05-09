@@ -588,7 +588,10 @@ fun BookPostCard(
             )
             
             Spacer(modifier = Modifier.height(16.dp))
-            Divider(color = PaginexGlassBorder, thickness = 0.5.dp)
+            val postDividerColor = PaginexGlassBorder.copy(
+                alpha = (PaginexGlassBorder.alpha + 0.14f).coerceAtMost(1f)
+            )
+            HorizontalDivider(thickness = 1.dp, color = postDividerColor)
         }
     }
 }

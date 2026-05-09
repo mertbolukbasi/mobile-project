@@ -68,6 +68,7 @@ import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.collectLatest
 import androidx.compose.foundation.lazy.rememberLazyListState
 import java.util.Locale
+import com.google.firebase.auth.FirebaseAuthException
 
 // --- NAVIGATION ROUTES ---
 sealed class Screen(val route: String, val icon: ImageVector? = null, val label: String? = null) {
@@ -75,6 +76,7 @@ sealed class Screen(val route: String, val icon: ImageVector? = null, val label:
     object Login : Screen("login")
     object Register : Screen("register")
     object VerifyEmail : Screen("verify_email")
+    object ForgotPassword : Screen("forgot_password")
     object ProfileSetup : Screen("profile_setup")
     object Home : Screen("home", Icons.Default.Home, "Home")
     object Explore : Screen("explore", Icons.Default.Search, "Explore")
@@ -274,8 +276,12 @@ fun PaginexApp() {
                 LoginScreen(
                     onLogin = { navController.navigate(Screen.Home.route) { popUpTo(0) } },
                     onNavigateToRegister = { navController.navigate(Screen.Register.route) },
-                    onEmailNotVerified = { navController.navigate(Screen.VerifyEmail.route) { popUpTo(0) } }
+                    onEmailNotVerified = { navController.navigate(Screen.VerifyEmail.route) { popUpTo(0) } },
+                    onForgotPassword = { navController.navigate(Screen.ForgotPassword.route) }
                 ) 
+            }
+            composable(Screen.ForgotPassword.route) {
+                ForgotPasswordScreen(onBackToLogin = { navController.popBackStack() })
             }
             composable(Screen.Register.route) {
                 RegisterScreen(
@@ -780,7 +786,12 @@ fun SplashScreen(onFinish: () -> Unit) {
 }
 
 @Composable
-fun LoginScreen(onLogin: () -> Unit, onNavigateToRegister: () -> Unit, onEmailNotVerified: () -> Unit = {}) {
+fun LoginScreen(
+    onLogin: () -> Unit,
+    onNavigateToRegister: () -> Unit,
+    onEmailNotVerified: () -> Unit = {},
+    onForgotPassword: () -> Unit = {}
+) {
     var email by remember { mutableStateOf("") }
     var password by remember { mutableStateOf("") }
     val scope = rememberCoroutineScope()
@@ -822,7 +833,17 @@ fun LoginScreen(onLogin: () -> Unit, onNavigateToRegister: () -> Unit, onEmailNo
                 unfocusedTextColor = PaginexWhite
             )
         )
-        Spacer(modifier = Modifier.height(32.dp))
+        Spacer(modifier = Modifier.height(8.dp))
+        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+            Text(
+                "Forgot password?",
+                color = PaginexNeonPurple,
+                fontWeight = FontWeight.Bold,
+                fontSize = 14.sp,
+                modifier = Modifier.clickable { onForgotPassword() }
+            )
+        }
+        Spacer(modifier = Modifier.height(24.dp))
         Button(
             onClick = {
                 if (email.isNotBlank() && password.isNotBlank()) {
@@ -861,6 +882,120 @@ fun LoginScreen(onLogin: () -> Unit, onNavigateToRegister: () -> Unit, onEmailNo
         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center) {
             Text("Don't have an account? ", color = PaginexWhite.copy(alpha = 0.7f))
             Text("Sign Up", color = PaginexNeonPurple, fontWeight = FontWeight.Bold, modifier = Modifier.clickable { onNavigateToRegister() })
+        }
+    }
+}
+
+@Composable
+fun ForgotPasswordScreen(onBackToLogin: () -> Unit) {
+    var email by remember { mutableStateOf("") }
+    val scope = rememberCoroutineScope()
+    var errorMessage by remember { mutableStateOf<String?>(null) }
+    var successMessage by remember { mutableStateOf<String?>(null) }
+    var isLoading by remember { mutableStateOf(false) }
+
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(PaginexSpace)
+            .imePadding()
+            .verticalScroll(rememberScrollState())
+    ) {
+        IconButton(onClick = onBackToLogin, modifier = Modifier.padding(8.dp)) {
+            Icon(Icons.Default.ArrowBack, contentDescription = "Back", tint = PaginexWhite)
+        }
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 24.dp)
+                .padding(bottom = 32.dp),
+            verticalArrangement = Arrangement.Top
+        ) {
+            Spacer(modifier = Modifier.height(24.dp))
+            Text("Reset password", fontSize = 28.sp, fontWeight = FontWeight.Bold, color = PaginexWhite)
+            Spacer(modifier = Modifier.height(8.dp))
+            Text(
+                "Enter your email and we'll send you a link to reset your password.",
+                color = PaginexWhite.copy(alpha = 0.7f),
+                fontSize = 14.sp
+            )
+            Spacer(modifier = Modifier.height(32.dp))
+
+            if (successMessage != null) {
+                Text(successMessage!!, color = PaginexNeonTeal, modifier = Modifier.padding(bottom = 8.dp))
+            }
+            if (errorMessage != null) {
+                Text(errorMessage!!, color = Color.Red, modifier = Modifier.padding(bottom = 8.dp))
+            }
+
+            OutlinedTextField(
+                value = email,
+                onValueChange = {
+                    email = it
+                    successMessage = null
+                    errorMessage = null
+                },
+                label = { Text("Email", color = PaginexWhite.copy(alpha = 0.7f)) },
+                modifier = Modifier.fillMaxWidth(),
+                enabled = !isLoading,
+                colors = OutlinedTextFieldDefaults.colors(
+                    focusedBorderColor = PaginexNeonPurple,
+                    unfocusedBorderColor = PaginexGlassBorder,
+                    focusedTextColor = PaginexWhite,
+                    unfocusedTextColor = PaginexWhite
+                )
+            )
+            Spacer(modifier = Modifier.height(24.dp))
+            Button(
+                onClick = {
+                    if (email.isBlank()) {
+                        errorMessage = "Please enter your email"
+                        successMessage = null
+                        return@Button
+                    }
+                    isLoading = true
+                    errorMessage = null
+                    successMessage = null
+                    scope.launch {
+                        val result = AuthService.sendPasswordResetEmail(email)
+                        isLoading = false
+                        when {
+                            result.isSuccess -> {
+                                successMessage =
+                                    "If an account exists for this email, we've sent password reset instructions."
+                                errorMessage = null
+                            }
+                            else -> {
+                                val ex = result.exceptionOrNull()
+                                val obscureMissingUser =
+                                    ex is FirebaseAuthException &&
+                                        ex.errorCode == "ERROR_USER_NOT_FOUND"
+                                if (obscureMissingUser) {
+                                    successMessage =
+                                        "If an account exists for this email, we've sent password reset instructions."
+                                    errorMessage = null
+                                } else {
+                                    errorMessage =
+                                        ex?.localizedMessage?.takeIf { it.isNotBlank() }
+                                            ?: "Something went wrong. Please try again."
+                                    successMessage = null
+                                }
+                            }
+                        }
+                    }
+                },
+                enabled = !isLoading,
+                modifier = Modifier.fillMaxWidth().height(56.dp),
+                colors = ButtonDefaults.buttonColors(containerColor = PaginexNeonPurple),
+                shape = RoundedCornerShape(28.dp)
+            ) {
+                if (isLoading) {
+                    CircularProgressIndicator(color = PaginexWhite, modifier = Modifier.size(24.dp))
+                } else {
+                    Text("Send reset link", fontWeight = FontWeight.Bold)
+                }
+            }
+            Spacer(modifier = Modifier.height(160.dp))
         }
     }
 }
