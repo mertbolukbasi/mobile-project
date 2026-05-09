@@ -83,28 +83,30 @@ val PaginexOrbit: Color @Composable get() = animatedThemeColor(Color(0xFFFFFFFF)
 // --- THEME ---
 @Composable
 fun PaginexTheme(isDarkTheme: Boolean = LocalIsDarkTheme.current, content: @Composable () -> Unit) {
-    val colorScheme = if (isDarkTheme) {
-        darkColorScheme(
-            primary = PaginexNeonPurple,
-            onPrimary = Color.White,
-            secondary = PaginexNeonTeal,
-            background = PaginexSpace,
-            surface = PaginexGalaxy,
-            onBackground = PaginexWhite,
-            onSurface = PaginexWhite
-        )
-    } else {
-        lightColorScheme(
-            primary = PaginexNeonPurple,
-            onPrimary = Color.White,
-            secondary = PaginexNeonTeal,
-            background = PaginexSpace,
-            surface = PaginexGalaxy,
-            onBackground = PaginexWhite,
-            onSurface = PaginexWhite
-        )
-    }
+    // Provide theme mode before resolving Paginex* colors and building ColorScheme: those helpers read
+    // LocalIsDarkTheme, which otherwise defaults to true and breaks light-theme onSurface (e.g. dropdown text).
     CompositionLocalProvider(LocalIsDarkTheme provides isDarkTheme) {
+        val colorScheme = if (isDarkTheme) {
+            darkColorScheme(
+                primary = PaginexNeonPurple,
+                onPrimary = Color.White,
+                secondary = PaginexNeonTeal,
+                background = PaginexSpace,
+                surface = PaginexGalaxy,
+                onBackground = PaginexWhite,
+                onSurface = PaginexWhite
+            )
+        } else {
+            lightColorScheme(
+                primary = PaginexNeonPurple,
+                onPrimary = Color.White,
+                secondary = PaginexNeonTeal,
+                background = PaginexSpace,
+                surface = PaginexGalaxy,
+                onBackground = PaginexWhite,
+                onSurface = PaginexWhite
+            )
+        }
         MaterialTheme(colorScheme = colorScheme, content = content)
     }
 }
