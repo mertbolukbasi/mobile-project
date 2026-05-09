@@ -30,7 +30,6 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.drawBehind
-import androidx.compose.ui.draw.BlurredEdgeTreatment
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -149,38 +148,25 @@ fun PaginexApp() {
                 
                 val bColor = PaginexSpace.copy(alpha = 0.85f)
                 val neonPurple = PaginexNeonPurple
-                Surface(
+                val barShape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp)
+                // Single-layer bar: avoid Surface + drawRect + drawLine stacking (read as double border).
+                Column(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(90.dp) // Slightly taller for more presence
-                        .drawBehind {
-                            // Neon Top Border with Glow
-                            val shadowRadius = 10.dp.toPx()
-                            val strokeWidth = 1.5.dp.toPx()
-                            
-                            // Stronger glow effect
-                            drawRect(
-                                color = neonPurple.copy(alpha = 0.3f),
-                                topLeft = Offset(0f, 0f),
-                                size = size.copy(height = strokeWidth * 3)
-                            )
-                            
-                            drawLine(
-                                color = neonPurple,
-                                start = Offset(0f, 0f),
-                                end = Offset(size.width, 0f),
-                                strokeWidth = strokeWidth
-                            )
-                        },
-                    color = bColor, // Glassy base
-                    shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp)
+                        .navigationBarsPadding()
+                        .background(bColor, barShape)
                 ) {
-                    Box(modifier = Modifier.fillMaxSize().blur(12.dp, edgeTreatment = BlurredEdgeTreatment.Unbounded)) // Subtle background depth
-                    
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(1.dp)
+                            .background(neonPurple)
+                    )
                     Row(
                         modifier = Modifier
-                            .fillMaxSize()
-                            .padding(bottom = 12.dp),
+                            .fillMaxWidth()
+                            .heightIn(min = 56.dp)
+                            .padding(top = 10.dp, bottom = 10.dp),
                         horizontalArrangement = Arrangement.SpaceAround,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
@@ -1332,7 +1318,7 @@ fun PaginexHomeScreen(
                 LazyColumn(
                     state = listState,
                     modifier = Modifier.fillMaxSize(),
-                    contentPadding = PaddingValues(top = 8.dp, bottom = 90.dp)
+                    contentPadding = PaddingValues(top = 8.dp, bottom = 16.dp)
                 ) {
                     items(posts, key = { it.id }) { post ->
                             BookPostCard(
@@ -1947,7 +1933,7 @@ fun PaginexProfileScreen(
             modifier = Modifier
                 .fillMaxSize()
                 .verticalScroll(rememberScrollState())
-                .padding(bottom = 90.dp),
+                .padding(bottom = 16.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
             Spacer(modifier = Modifier.height(24.dp))
@@ -2503,7 +2489,7 @@ fun SavedPostsScreen(onBookClick: (String) -> Unit = {}) {
             columns = GridCells.Fixed(2),
             horizontalArrangement = Arrangement.spacedBy(16.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp),
-            contentPadding = PaddingValues(bottom = 90.dp)
+            contentPadding = PaddingValues(bottom = 16.dp)
         ) {
             items(uniquePosts, key = { it.id }) { post ->
                 CosmicPlanet(
