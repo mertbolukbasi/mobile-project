@@ -3788,7 +3788,7 @@ fun CreatePostScreen(initialPostId: String? = null, onPost: () -> Unit, onDrafts
                         ) {
                             Icon(Icons.Default.Add, null, tint = PaginexNeonPurple, modifier = Modifier.size(16.dp))
                             Spacer(modifier = Modifier.width(8.dp))
-                            Text("Select Book from Library", color = PaginexNeonPurple, fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                            Text("Select book", color = PaginexNeonPurple, fontWeight = FontWeight.Bold, fontSize = 14.sp)
                         }
                         
                         Spacer(modifier = Modifier.height(12.dp))
@@ -3801,7 +3801,7 @@ fun CreatePostScreen(initialPostId: String? = null, onPost: () -> Unit, onDrafts
                         ) {
                             Icon(Icons.Default.List, null, tint = PaginexNeonTeal, modifier = Modifier.size(16.dp))
                             Spacer(modifier = Modifier.width(8.dp))
-                            Text("Select Book List from Library", color = PaginexNeonTeal, fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                            Text("Select booklist", color = PaginexNeonTeal, fontWeight = FontWeight.Bold, fontSize = 14.sp)
                         }
                     }
                 }
@@ -3872,11 +3872,9 @@ fun CreatePostScreen(initialPostId: String? = null, onPost: () -> Unit, onDrafts
 
                     // 3. Step: Expressive Input Pane
                     Card(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .graphicsLayer(rotationZ = 1f),
+                        modifier = Modifier.fillMaxWidth(),
                         colors = CardDefaults.cardColors(containerColor = PaginexGlass),
-                        shape = RoundedCornerShape(topStart = 8.dp, bottomEnd = 8.dp, topEnd = 40.dp, bottomStart = 40.dp),
+                        shape = RoundedCornerShape(20.dp),
                         border = BorderStroke(1.dp, PaginexGlassBorder)
                     ) {
                         Column(modifier = Modifier.padding(24.dp)) {
@@ -3886,10 +3884,18 @@ fun CreatePostScreen(initialPostId: String? = null, onPost: () -> Unit, onDrafts
                                 value = reviewText,
                                 onValueChange = { reviewText = it },
                                 modifier = Modifier.fillMaxWidth().height(160.dp),
-                                textStyle = androidx.compose.ui.text.TextStyle(color = PaginexWhite, fontSize = 16.sp),
+                                textStyle = androidx.compose.ui.text.TextStyle(color = PaginexWhite, fontSize = 16.sp, lineHeight = 22.sp),
                                 decorationBox = { innerTextField ->
-                                    if (reviewText.isEmpty()) Text("Let your thoughts flow like stars...", color = PaginexWhite.copy(alpha = 0.7f))
-                                    innerTextField()
+                                    Box(modifier = Modifier.fillMaxWidth().height(160.dp)) {
+                                        if (reviewText.isEmpty()) {
+                                            Text(
+                                                "Let your thoughts flow like stars...",
+                                                color = PaginexWhite.copy(alpha = 0.7f),
+                                                style = androidx.compose.ui.text.TextStyle(fontSize = 16.sp, lineHeight = 22.sp)
+                                            )
+                                        }
+                                        innerTextField()
+                                    }
                                 }
                             )
                         }
