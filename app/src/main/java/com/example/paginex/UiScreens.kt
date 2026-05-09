@@ -143,6 +143,7 @@ fun PaginexApp() {
         containerColor = PaginexSpace,
         bottomBar = {
             if (showBottomBar) {
+                val onCreatePostScreen = currentRoute == Screen.CreatePost.route
                 val items = listOf(Screen.Home, Screen.Explore, Screen.CreatePost, Screen.Saved, Screen.Profile)
                 
                 val bColor = PaginexSpace.copy(alpha = 0.85f)
@@ -184,10 +185,13 @@ fun PaginexApp() {
                     ) {
                         items.forEach { screen ->
                             val tabIndex = swipeableTabRoutes.indexOf(screen.route)
-                            val isSelected = if (tabIndex >= 0) {
-                                tabIndex == selectedMainTabIndex
-                            } else {
-                                currentRoute == screen.route
+                            val isSelected = when {
+                                onCreatePostScreen ->
+                                    screen.route == Screen.CreatePost.route
+                                tabIndex >= 0 ->
+                                    tabIndex == selectedMainTabIndex
+                                else ->
+                                    currentRoute == screen.route
                             }
                             val iconGlowScale by animateFloatAsState(
                                 targetValue = if (isSelected) 1.2f else 1f,
@@ -202,7 +206,17 @@ fun PaginexApp() {
                                     .clickable { 
                                         when {
                                             screen.route == Screen.CreatePost.route -> navigateToTab(screen.route)
-                                            tabIndex >= 0 -> setSelectedMainTab(tabIndex)
+                                            tabIndex >= 0 -> {
+                                                // Create Post is a separate NavHost destination; pager tab state alone
+                                                // does not pop it. Mirror Explore/Saved/Profile: go Home, then switch tab.
+                                                if (onCreatePostScreen) {
+                                                    navController.navigate(Screen.Home.route) {
+                                                        launchSingleTop = true
+                                                        popUpTo(navController.graph.startDestinationId)
+                                                    }
+                                                }
+                                                setSelectedMainTab(tabIndex)
+                                            }
                                             else -> navigateToTab(screen.route)
                                         }
                                     }
@@ -3685,10 +3699,83 @@ fun CelestialCategoryPortal(
     }
 }
 
+/** At most one draft per book, or one per book list (same user). Excludes the draft currently being edited. */
+private fun findConflictingDraft(
+    drafts: List<Post>,
+    userId: String,
+    selectedBook: Book?,
+    selectedBookList: BookList?,
+    editingDraftId: String?
+): Post? {
+    if (selectedBook == null && selectedBookList == null) return null
+    val isBooklist = selectedBookList != null
+    val keyId = if (isBooklist) selectedBookList!!.id else selectedBook!!.id
+    return drafts.firstOrNull { d ->
+        if (d.userId != userId) return@firstOrNull false
+        if (editingDraftId != null && d.id == editingDraftId) return@firstOrNull false
+        when {
+            isBooklist -> d.isBooklistPost && (d.booklist?.id == keyId || d.book.id == keyId)
+            else -> !d.isBooklistPost && d.book.id == keyId
+        }
+    }
+}
+
+@Composable
+private fun DraftSavedSnackbar(snackbarData: SnackbarData) {
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(22.dp),
+        color = PaginexGalaxy.copy(alpha = 0.94f),
+        tonalElevation = 0.dp,
+        shadowElevation = 10.dp,
+        border = BorderStroke(1.dp, PaginexNeonTeal.copy(alpha = 0.5f))
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 18.dp, vertical = 15.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(14.dp)
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(40.dp)
+                    .clip(CircleShape)
+                    .background(
+                        Brush.radialGradient(
+                            colors = listOf(
+                                PaginexNeonTeal.copy(alpha = 0.4f),
+                                PaginexNeonTeal.copy(alpha = 0.08f),
+                                Color.Transparent
+                            )
+                        )
+                    ),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    Icons.Default.CheckCircle,
+                    contentDescription = null,
+                    tint = PaginexNeonTeal,
+                    modifier = Modifier.size(24.dp)
+                )
+            }
+            Text(
+                text = snackbarData.visuals.message,
+                color = PaginexWhite,
+                fontSize = 15.sp,
+                fontWeight = FontWeight.SemiBold,
+                lineHeight = 20.sp,
+                letterSpacing = 0.25.sp,
+                modifier = Modifier.weight(1f)
+            )
+        }
+    }
+}
+
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
 fun CreatePostScreen(initialPostId: String? = null, onPost: () -> Unit, onDraftsClick: () -> Unit) {
     val focusManager = androidx.compose.ui.platform.LocalFocusManager.current
+    val scope = rememberCoroutineScope()
+    val snackbarHostState = remember { SnackbarHostState() }
     val initialPost = remember(initialPostId) {
         MockData.feedPosts.find { it.id == initialPostId } ?: MockData.drafts.find { it.id == initialPostId }
     }
@@ -3703,21 +3790,18 @@ fun CreatePostScreen(initialPostId: String? = null, onPost: () -> Unit, onDrafts
     var showLibrarySelector by remember { mutableStateOf(false) }
     var showListSelector by remember { mutableStateOf(false) }
     var selectedBookList by remember { mutableStateOf<BookList?>(initialPost?.booklist) }
+    var showDuplicateDraftDialog by remember { mutableStateOf(false) }
     
-    // Undo States
+    // Undo / countdown: publish only (draft saves immediately + snackbar).
     var undoTimer by remember { mutableStateOf<Int?>(null) }
     var pendingPost by remember { mutableStateOf<Post?>(null) }
-    var isDraftAction by remember { mutableStateOf(false) }
 
-    // Countdown for undo overlay. Publish returns home, draft stays on Create screen.
     LaunchedEffect(undoTimer) {
         if (undoTimer != null && undoTimer!! > 0) {
             delay(1000L)
             undoTimer = undoTimer!! - 1
         } else if (undoTimer == 0) {
-            if (!isDraftAction) {
-                onPost()
-            }
+            onPost()
             undoTimer = null
             pendingPost = null
         }
@@ -3944,6 +4028,19 @@ fun CreatePostScreen(initialPostId: String? = null, onPost: () -> Unit, onDrafts
                             onClick = {
                                 if (isReady) {
                                     val uid = AuthService.getUid()
+                                    val editingDraftId =
+                                        if (initialPostId != null && initialPostId.startsWith("draft_")) initialPostId else null
+                                    val conflict = findConflictingDraft(
+                                        MockData.drafts,
+                                        uid,
+                                        selectedBook,
+                                        selectedBookList,
+                                        editingDraftId
+                                    )
+                                    if (conflict != null) {
+                                        showDuplicateDraftDialog = true
+                                        return@OutlinedButton
+                                    }
                                     val dummyBook = if (selectedBookList != null) {
                                         Book(
                                             id = selectedBookList!!.id,
@@ -3956,7 +4053,7 @@ fun CreatePostScreen(initialPostId: String? = null, onPost: () -> Unit, onDrafts
                                         selectedBook!!
                                     }
                                     val draftId = if (initialPostId != null && initialPostId.startsWith("draft_")) initialPostId else "draft_${System.currentTimeMillis()}"
-                                    pendingPost = Post(
+                                    val draft = Post(
                                         id = draftId,
                                         userId = uid,
                                         book = dummyBook,
@@ -3966,23 +4063,25 @@ fun CreatePostScreen(initialPostId: String? = null, onPost: () -> Unit, onDrafts
                                         isBooklistPost = selectedBookList != null,
                                         booklist = selectedBookList
                                     )
-                                    pendingPost?.let { draft ->
-                                        if (initialPostId != null && initialPostId != draft.id) {
-                                            val oldDraftIdx = MockData.drafts.indexOfFirst { it.id == initialPostId }
-                                            if (oldDraftIdx != -1) MockData.drafts.removeAt(oldDraftIdx)
-                                        }
-                                        val existingDraftIdx = MockData.drafts.indexOfFirst { it.id == draft.id }
-                                        if (existingDraftIdx != -1) MockData.drafts[existingDraftIdx] = draft
-                                        else MockData.drafts.add(0, draft)
-                                        kotlinx.coroutines.MainScope().launch {
-                                            if (initialPostId != null && initialPostId != draft.id && initialPostId.startsWith("draft_")) {
-                                                FirestoreService.deleteDraft(initialPostId)
-                                            }
-                                            FirestoreService.createDraft(draft)
-                                        }
+                                    if (initialPostId != null && initialPostId != draft.id) {
+                                        val oldDraftIdx = MockData.drafts.indexOfFirst { it.id == initialPostId }
+                                        if (oldDraftIdx != -1) MockData.drafts.removeAt(oldDraftIdx)
                                     }
-                                    isDraftAction = true
-                                    undoTimer = 5
+                                    val existingDraftIdx = MockData.drafts.indexOfFirst { it.id == draft.id }
+                                    if (existingDraftIdx != -1) MockData.drafts[existingDraftIdx] = draft
+                                    else MockData.drafts.add(0, draft)
+                                    val draftedMsg =
+                                        if (selectedBookList != null) "The booklist is drafted!" else "The book is drafted!"
+                                    scope.launch {
+                                        if (initialPostId != null && initialPostId != draft.id && initialPostId.startsWith("draft_")) {
+                                            FirestoreService.deleteDraft(initialPostId)
+                                        }
+                                        FirestoreService.createDraft(draft)
+                                        snackbarHostState.showSnackbar(
+                                            message = draftedMsg,
+                                            duration = SnackbarDuration.Long
+                                        )
+                                    }
                                 }
                             },
                             enabled = isReady,
@@ -4052,6 +4151,34 @@ fun CreatePostScreen(initialPostId: String? = null, onPost: () -> Unit, onDrafts
             )
         }
 
+        if (showDuplicateDraftDialog) {
+            AlertDialog(
+                onDismissRequest = { showDuplicateDraftDialog = false },
+                containerColor = PaginexGalaxy,
+                shape = RoundedCornerShape(20.dp),
+                title = {
+                    Text("The draft already exists.", color = PaginexWhite, fontWeight = FontWeight.Bold)
+                },
+                text = {
+                    Text(
+                        if (selectedBookList != null) {
+                            "A draft already exists for this book list. You cannot create a second draft using the same list. You can edit or delete the existing draft from the Drafts screen."
+                        } else {
+                            "A draft for this book already exists. You cannot create a second draft for the same book. You can edit or delete the existing draft from the Drafts screen."
+                        },
+                        color = PaginexWhite.copy(alpha = 0.85f)
+                    )
+                },
+                confirmButton = {
+                    Button(
+                        onClick = { showDuplicateDraftDialog = false },
+                        colors = ButtonDefaults.buttonColors(containerColor = PaginexNeonPurple),
+                        shape = RoundedCornerShape(12.dp)
+                    ) { Text("Tamam", color = PaginexWhite, fontWeight = FontWeight.Bold) }
+                }
+            )
+        }
+
         if (showPublishDialog) {
             AlertDialog(
                 onDismissRequest = { showPublishDialog = false },
@@ -4085,7 +4212,6 @@ fun CreatePostScreen(initialPostId: String? = null, onPost: () -> Unit, onDrafts
                                 booklist = selectedBookList
                             )
                             pendingPost = newPost
-                            isDraftAction = false
                             // Add to local cache immediately
                             MockData.feedPosts.add(0, newPost)
                             // Handle old post cleanup + Firestore write in GlobalScope (survives navigation)
@@ -4141,21 +4267,16 @@ fun CreatePostScreen(initialPostId: String? = null, onPost: () -> Unit, onDrafts
                             Text("${undoTimer}", color = PaginexNeonTeal, fontWeight = FontWeight.Black, fontSize = 14.sp)
                         }
                         Spacer(modifier = Modifier.width(12.dp))
-                        Text(if (isDraftAction) "Saving to drafts..." else "Publishing...", color = PaginexWhite, fontSize = 13.sp)
+                        Text("Publishing...", color = PaginexWhite, fontSize = 13.sp)
                     }
                     
                     TextButton(
                         onClick = { 
-                            // Rollback: delete the post we just saved to Firestore
                             val postToUndo = pendingPost
-                            if (postToUndo != null && !isDraftAction) {
+                            if (postToUndo != null) {
                                 val idx = MockData.feedPosts.indexOfFirst { it.id == postToUndo.id }
                                 if (idx != -1) MockData.feedPosts.removeAt(idx)
                                 kotlinx.coroutines.MainScope().launch { FirestoreService.deletePost(postToUndo.id) }
-                            } else if (postToUndo != null && isDraftAction) {
-                                val idx = MockData.drafts.indexOfFirst { it.id == postToUndo.id }
-                                if (idx != -1) MockData.drafts.removeAt(idx)
-                                kotlinx.coroutines.MainScope().launch { FirestoreService.deleteDraft(postToUndo.id) }
                             }
                             undoTimer = null
                             pendingPost = null
@@ -4166,6 +4287,18 @@ fun CreatePostScreen(initialPostId: String? = null, onPost: () -> Unit, onDrafts
                 }
             }
         }
+
+        SnackbarHost(
+            hostState = snackbarHostState,
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .fillMaxWidth()
+                .padding(horizontal = 20.dp)
+                .navigationBarsPadding()
+                .padding(bottom = 92.dp)
+                .imePadding(),
+            snackbar = { DraftSavedSnackbar(it) }
+        )
     }
 
 }
