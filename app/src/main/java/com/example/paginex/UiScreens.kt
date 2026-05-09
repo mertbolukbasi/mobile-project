@@ -22,6 +22,7 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.runtime.*
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -41,6 +42,8 @@ import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.Velocity
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.detectTransformGestures
+import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.ui.input.pointer.pointerInput
 import kotlin.math.*
 import androidx.compose.ui.text.font.FontWeight
@@ -60,6 +63,8 @@ import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.foundation.text.BasicTextField
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.collectLatest
 import androidx.compose.foundation.lazy.rememberLazyListState
 
 // --- NAVIGATION ROUTES ---
@@ -91,11 +96,29 @@ fun PaginexApp() {
     val navController = rememberNavController()
     val navBackStackEntry by navController.currentBackStackEntryAsState()
     val currentRoute = navBackStackEntry?.destination?.route
-
     val showBottomBar = currentRoute in listOf(
         Screen.Home.route, Screen.Explore.route, Screen.CreatePost.route, 
         Screen.Saved.route, Screen.Profile.route
     )
+    val swipeableTabRoutes = listOf(
+        Screen.Home.route,
+        Screen.Explore.route,
+        Screen.Saved.route,
+        Screen.Profile.route
+    )
+    var selectedMainTabIndex by rememberSaveable { mutableIntStateOf(0) }
+
+    LaunchedEffect(currentRoute) {
+        val idx = swipeableTabRoutes.indexOf(currentRoute)
+        if (idx >= 0 && idx != selectedMainTabIndex) selectedMainTabIndex = idx
+    }
+
+    fun navigateToTab(route: String) {
+        navController.navigate(route) {
+            popUpTo(navController.graph.startDestinationId)
+            launchSingleTop = true
+        }
+    }
 
     Scaffold(
         containerColor = PaginexSpace,
@@ -141,7 +164,12 @@ fun PaginexApp() {
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         items.forEach { screen ->
-                            val isSelected = currentRoute == screen.route
+                            val tabIndex = swipeableTabRoutes.indexOf(screen.route)
+                            val isSelected = if (tabIndex >= 0) {
+                                tabIndex == selectedMainTabIndex
+                            } else {
+                                currentRoute == screen.route
+                            }
                             val iconGlowScale by animateFloatAsState(
                                 targetValue = if (isSelected) 1.2f else 1f,
                                 animationSpec = tween(300, easing = FastOutSlowInEasing)
@@ -153,9 +181,11 @@ fun PaginexApp() {
                                 modifier = Modifier
                                     .clip(RoundedCornerShape(12.dp))
                                     .clickable { 
-                                        navController.navigate(screen.route) { 
-                                            popUpTo(navController.graph.startDestinationId); launchSingleTop = true 
-                                        } 
+                                        when {
+                                            screen.route == Screen.CreatePost.route -> navigateToTab(screen.route)
+                                            tabIndex >= 0 -> selectedMainTabIndex = tabIndex
+                                            else -> navigateToTab(screen.route)
+                                        }
                                     }
                                     .padding(8.dp)
                             ) {
@@ -202,7 +232,11 @@ fun PaginexApp() {
             }
         }
     ) { padding ->
-        NavHost(navController, startDestination = Screen.Splash.route, modifier = Modifier.padding(padding)) {
+        NavHost(
+            navController,
+            startDestination = Screen.Splash.route,
+            modifier = Modifier.padding(padding)
+        ) {
             composable(Screen.Splash.route) { SplashScreen { 
                 if (AuthService.isUserLoggedIn() && AuthService.isEmailVerified()) {
                     if (MockData.currentUser.fullName == "New User" || MockData.currentUser.username == "newuser") {
@@ -251,19 +285,22 @@ fun PaginexApp() {
                     }
                 )
             }
-            composable(Screen.Home.route) { 
-                PaginexHomeScreen(
-                    onNavigateToDetail = { postId -> navController.navigate("detail/$postId") },
-                    onNavigateToEdit = { postId -> navController.navigate("create-post?postId=$postId") },
-                    onNavigateToUser = { userId -> 
-                        if (userId == AuthService.getUid()) navController.navigate(Screen.Profile.route)
-                        else {
-                            navController.navigate(Screen.PublicProfile.createRoute(userId))
-                        }
-                    }
-                ) 
+            composable(Screen.Home.route) {
+                MainTabsPager(
+                    selectedTabIndex = selectedMainTabIndex,
+                    onTabSettled = { settledIndex -> selectedMainTabIndex = settledIndex },
+                    navController = navController
+                )
             }
-            composable(Screen.Explore.route) { ExploreScreen(onBookClick = { postId -> navController.navigate("detail/$postId") }) }
+            composable(Screen.Explore.route) {
+                LaunchedEffect(Unit) {
+                    selectedMainTabIndex = 1
+                    navController.navigate(Screen.Home.route) {
+                        launchSingleTop = true
+                        popUpTo(navController.graph.startDestinationId)
+                    }
+                }
+            }
             composable(
                 route = Screen.CreatePost.route,
                 arguments = listOf(navArgument("postId") { 
@@ -281,17 +318,24 @@ fun PaginexApp() {
                     onDraftsClick = { navController.navigate(Screen.Drafts.route) }
                 ) 
             }
-            composable(Screen.Saved.route) { SavedPostsScreen(onBookClick = { postId -> navController.navigate("post_list/$postId?mode=saved_book") }) }
-            composable(Screen.Profile.route) { PaginexProfileScreen(
-                onEditClick = { navController.navigate(Screen.Settings.route) },
-                onListsClick = { navController.navigate("book_lists/${AuthService.getUid()}") },
-                onConstellationClick = { navController.navigate("constellation/${AuthService.getUid()}") },
-                onBookClick = { postId -> navController.navigate("post_list/$postId?mode=single") },
-                onLogoutClick = {
-                    AuthService.logout()
-                    navController.navigate(Screen.Login.route) { popUpTo(0) }
+            composable(Screen.Saved.route) {
+                LaunchedEffect(Unit) {
+                    selectedMainTabIndex = 2
+                    navController.navigate(Screen.Home.route) {
+                        launchSingleTop = true
+                        popUpTo(navController.graph.startDestinationId)
+                    }
                 }
-            ) }
+            }
+            composable(Screen.Profile.route) {
+                LaunchedEffect(Unit) {
+                    selectedMainTabIndex = 3
+                    navController.navigate(Screen.Home.route) {
+                        launchSingleTop = true
+                        popUpTo(navController.graph.startDestinationId)
+                    }
+                }
+            }
             composable(Screen.EditProfile.route) { EditProfileScreen { navController.popBackStack() } }
             composable(
                 route = "book_lists/{userId}",
@@ -377,6 +421,64 @@ fun PaginexApp() {
         }
     }
 
+}
+
+@Composable
+fun MainTabsPager(
+    selectedTabIndex: Int,
+    onTabSettled: (Int) -> Unit,
+    navController: NavHostController
+) {
+    val pagerState = rememberPagerState(
+        initialPage = selectedTabIndex,
+        pageCount = { 4 }
+    )
+
+    LaunchedEffect(selectedTabIndex) {
+        if (!pagerState.isScrollInProgress && pagerState.currentPage != selectedTabIndex) {
+            pagerState.animateScrollToPage(selectedTabIndex)
+        }
+    }
+
+    LaunchedEffect(pagerState) {
+        snapshotFlow { pagerState.settledPage }
+            .distinctUntilChanged()
+            .collectLatest { page ->
+                if (page != selectedTabIndex) onTabSettled(page)
+            }
+    }
+
+    HorizontalPager(
+        state = pagerState,
+        modifier = Modifier.fillMaxSize()
+    ) { page ->
+        when (page) {
+            0 -> PaginexHomeScreen(
+                onNavigateToDetail = { postId -> navController.navigate("detail/$postId") },
+                onNavigateToEdit = { postId -> navController.navigate("create-post?postId=$postId") },
+                onNavigateToUser = { userId ->
+                    if (userId == AuthService.getUid()) onTabSettled(3)
+                    else navController.navigate(Screen.PublicProfile.createRoute(userId))
+                }
+            )
+            1 -> ExploreScreen(
+                onBookClick = { postId -> navController.navigate("detail/$postId") }
+            )
+            2 -> SavedPostsScreen(
+                onBookClick = { postId -> navController.navigate("post_list/$postId?mode=saved_book") }
+            )
+            3 -> PaginexProfileScreen(
+                onEditClick = { navController.navigate(Screen.Settings.route) },
+                onListsClick = { navController.navigate("book_lists/${AuthService.getUid()}") },
+                onConstellationClick = { navController.navigate("constellation/${AuthService.getUid()}") },
+                onBookClick = { postId -> navController.navigate("post_list/$postId?mode=single") },
+                onLogoutClick = {
+                    AuthService.logout()
+                    navController.navigate(Screen.Login.route) { popUpTo(0) }
+                }
+            )
+        }
+    }
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
