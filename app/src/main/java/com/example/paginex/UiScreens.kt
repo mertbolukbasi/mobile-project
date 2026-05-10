@@ -90,6 +90,9 @@ sealed class Screen(val route: String, val icon: ImageVector? = null, val label:
     object Drafts : Screen("drafts")
     object Constellation : Screen("constellation")
     object Settings : Screen("settings")
+    object Privacy : Screen("privacy")
+    object Security : Screen("security")
+    object About : Screen("about")
     object PublicProfile : Screen("public_profile/{userId}") {
         fun createRoute(userId: String) = "public_profile/$userId"
     }
@@ -425,6 +428,9 @@ fun PaginexApp() {
             composable(Screen.Settings.route) { 
                 SettingsScreen(
                     onNavigateToEditProfile = { navController.navigate(Screen.EditProfile.route) },
+                    onNavigateToPrivacy = { navController.navigate(Screen.Privacy.route) },
+                    onNavigateToSecurity = { navController.navigate(Screen.Security.route) },
+                    onNavigateToAbout = { navController.navigate(Screen.About.route) },
                     onLogout = {
                         AuthService.logout()
                         navController.navigate(Screen.Login.route) { popUpTo(0) }
@@ -432,6 +438,9 @@ fun PaginexApp() {
                     onBack = { navController.popBackStack() }
                 )
             }
+            composable(Screen.Privacy.route) { PrivacyScreen { navController.popBackStack() } }
+            composable(Screen.Security.route) { SecurityScreen { navController.popBackStack() } }
+            composable(Screen.About.route) { AboutScreen { navController.popBackStack() } }
             composable(
                 route = Screen.PublicProfile.route,
                 arguments = listOf(navArgument("userId") { type = NavType.StringType })
@@ -523,7 +532,11 @@ fun MainTabsPager(
                 }
             )
             1 -> ExploreScreen(
-                onBookClick = { postId -> navController.navigate("detail/$postId") }
+                onBookClick = { postId -> navController.navigate("detail/$postId") },
+                onUserClick = { userId ->
+                    if (userId == AuthService.getUid()) onTabSettled(3)
+                    else navController.navigate(Screen.PublicProfile.createRoute(userId))
+                }
             )
             2 -> SavedPostsScreen(
                 onBookClick = { postId -> navController.navigate("post_list/$postId?mode=saved_book") }
@@ -1571,7 +1584,7 @@ private fun userMatchesExploreKeywords(user: User, keywords: List<String>): Bool
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
-fun ExploreScreen(onBookClick: (String) -> Unit = {}) {
+fun ExploreScreen(onBookClick: (String) -> Unit = {}, onUserClick: (String) -> Unit = {}) {
     var selectedListForDetails by remember { mutableStateOf<BookList?>(null) }
     var searchQuery by remember { mutableStateOf("") }
     val booksTab = "Books"
@@ -1808,6 +1821,7 @@ fun ExploreScreen(onBookClick: (String) -> Unit = {}) {
                             .clip(RoundedCornerShape(12.dp))
                             .background(PaginexGlass)
                             .border(1.dp, PaginexGlassBorder, RoundedCornerShape(12.dp))
+                            .clickable { onUserClick(user.id) }
                             .padding(12.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
@@ -4853,6 +4867,9 @@ fun DraftsScreen(onBack: () -> Unit, onEditDraft: (String) -> Unit = {}) {
 @Composable
 fun SettingsScreen(
     onNavigateToEditProfile: () -> Unit,
+    onNavigateToPrivacy: () -> Unit,
+    onNavigateToSecurity: () -> Unit,
+    onNavigateToAbout: () -> Unit,
     onLogout: () -> Unit,
     onBack: () -> Unit
 ) {
@@ -5133,6 +5150,57 @@ fun SettingsScreen(
                         uncheckedTrackColor = PaginexGlass
                     )
                 )
+            }
+            Divider(color = PaginexGlassBorder, thickness = 0.5.dp, modifier = Modifier.padding(horizontal = 24.dp))
+
+            Spacer(modifier = Modifier.height(32.dp))
+
+            Text(
+                "About & Legal",
+                color = PaginexWhite.copy(alpha = 0.7f),
+                fontSize = 12.sp,
+                fontWeight = FontWeight.Bold,
+                letterSpacing = 1.sp,
+                modifier = Modifier.padding(horizontal = 24.dp)
+            )
+            Spacer(modifier = Modifier.height(16.dp))
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable { onNavigateToPrivacy() }
+                    .padding(horizontal = 24.dp, vertical = 16.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Icon(Icons.Default.Info, null, tint = PaginexNeonTeal, modifier = Modifier.size(24.dp))
+                Spacer(modifier = Modifier.width(16.dp))
+                Text("Privacy Policy", color = PaginexWhite, fontSize = 16.sp, modifier = Modifier.weight(1f))
+                Icon(Icons.Default.KeyboardArrowRight, null, tint = PaginexWhite.copy(alpha = 0.7f))
+            }
+            Divider(color = PaginexGlassBorder, thickness = 0.5.dp, modifier = Modifier.padding(horizontal = 24.dp))
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable { onNavigateToSecurity() }
+                    .padding(horizontal = 24.dp, vertical = 16.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Icon(Icons.Default.Lock, null, tint = PaginexNeonPurple, modifier = Modifier.size(24.dp))
+                Spacer(modifier = Modifier.width(16.dp))
+                Text("Security", color = PaginexWhite, fontSize = 16.sp, modifier = Modifier.weight(1f))
+                Icon(Icons.Default.KeyboardArrowRight, null, tint = PaginexWhite.copy(alpha = 0.7f))
+            }
+            Divider(color = PaginexGlassBorder, thickness = 0.5.dp, modifier = Modifier.padding(horizontal = 24.dp))
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable { onNavigateToAbout() }
+                    .padding(horizontal = 24.dp, vertical = 16.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Icon(Icons.Default.Face, null, tint = PaginexNeonTeal, modifier = Modifier.size(24.dp))
+                Spacer(modifier = Modifier.width(16.dp))
+                Text("About Paginex", color = PaginexWhite, fontSize = 16.sp, modifier = Modifier.weight(1f))
+                Icon(Icons.Default.KeyboardArrowRight, null, tint = PaginexWhite.copy(alpha = 0.7f))
             }
             Divider(color = PaginexGlassBorder, thickness = 0.5.dp, modifier = Modifier.padding(horizontal = 24.dp))
 
@@ -5529,6 +5597,229 @@ fun PostListScreen(
                     Spacer(modifier = Modifier.height(16.dp))
                 }
             }
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun PrivacyScreen(onBack: () -> Unit) {
+    Scaffold(
+        containerColor = PaginexSpace,
+        topBar = {
+            TopAppBar(
+                title = { Text("Privacy Policy", color = PaginexWhite, fontWeight = FontWeight.Bold, fontSize = 20.sp) },
+                navigationIcon = {
+                    IconButton(onClick = onBack) { Icon(Icons.Default.ArrowBack, null, tint = PaginexWhite) }
+                },
+                colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.Transparent)
+            )
+        }
+    ) { padding ->
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(padding)
+                .verticalScroll(rememberScrollState())
+                .padding(24.dp)
+        ) {
+            Text(
+                "Your Privacy Matters to Us",
+                color = PaginexNeonTeal,
+                fontSize = 24.sp,
+                fontWeight = FontWeight.Bold,
+                modifier = Modifier.padding(bottom = 16.dp)
+            )
+            
+            Text(
+                "Welcome to Paginex. We are committed to protecting your personal information and your right to privacy. If you have any questions or concerns about our policy, or our practices with regards to your personal information, please contact us.",
+                color = PaginexWhite.copy(alpha = 0.8f),
+                fontSize = 16.sp,
+                lineHeight = 24.sp,
+                modifier = Modifier.padding(bottom = 24.dp)
+            )
+
+            Text("1. Information We Collect", color = PaginexWhite, fontWeight = FontWeight.Bold, fontSize = 18.sp, modifier = Modifier.padding(bottom = 8.dp))
+            Text(
+                "We collect personal information that you voluntarily provide to us when registering at the Services expressing an interest in obtaining information about us or our products and services, when participating in activities on the Services or otherwise contacting us.\n\n" +
+                "The personal information that we collect depends on the context of your interactions with us and the Services, the choices you make and the products and features you use. The personal information we collect can include the following:\n\n" +
+                "• Name and Contact Data. We collect your first and last name, email address, postal address, phone number, and other similar contact data.\n" +
+                "• Credentials. We collect passwords, password hints, and similar security information used for authentication and account access.",
+                color = PaginexWhite.copy(alpha = 0.8f),
+                fontSize = 16.sp,
+                lineHeight = 24.sp,
+                modifier = Modifier.padding(bottom = 24.dp)
+            )
+
+            Text("2. How We Use Your Information", color = PaginexWhite, fontWeight = FontWeight.Bold, fontSize = 18.sp, modifier = Modifier.padding(bottom = 8.dp))
+            Text(
+                "We use personal information collected via our Services for a variety of business purposes described below. We process your personal information for these purposes in reliance on our legitimate business interests, in order to enter into or perform a contract with you, with your consent, and/or for compliance with our legal obligations.\n\n" +
+                "We use the information we collect or receive:\n" +
+                "• To facilitate account creation and logon process.\n" +
+                "• To send administrative information to you.\n" +
+                "• To fulfill and manage your orders, payments, returns, and exchanges.",
+                color = PaginexWhite.copy(alpha = 0.8f),
+                fontSize = 16.sp,
+                lineHeight = 24.sp,
+                modifier = Modifier.padding(bottom = 24.dp)
+            )
+
+            Text("3. Will Your Information be Shared with Anyone?", color = PaginexWhite, fontWeight = FontWeight.Bold, fontSize = 18.sp, modifier = Modifier.padding(bottom = 8.dp))
+            Text(
+                "We only share and disclose your information in the following situations:\n\n" +
+                "• Compliance with Laws. We may disclose your information where we are legally required to do so in order to comply with applicable law, governmental requests, a judicial proceeding, court order, or legal process.\n" +
+                "• Vital Interests and Legal Rights. We may disclose your information where we believe it is necessary to investigate, prevent, or take action regarding potential violations of our policies, suspected fraud, situations involving potential threats to the safety of any person and illegal activities.",
+                color = PaginexWhite.copy(alpha = 0.8f),
+                fontSize = 16.sp,
+                lineHeight = 24.sp,
+                modifier = Modifier.padding(bottom = 24.dp)
+            )
+            
+            Text("Last updated: May 10, 2026", color = PaginexWhite.copy(alpha = 0.5f), fontSize = 14.sp)
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun SecurityScreen(onBack: () -> Unit) {
+    Scaffold(
+        containerColor = PaginexSpace,
+        topBar = {
+            TopAppBar(
+                title = { Text("Security", color = PaginexWhite, fontWeight = FontWeight.Bold, fontSize = 20.sp) },
+                navigationIcon = {
+                    IconButton(onClick = onBack) { Icon(Icons.Default.ArrowBack, null, tint = PaginexWhite) }
+                },
+                colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.Transparent)
+            )
+        }
+    ) { padding ->
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(padding)
+                .verticalScroll(rememberScrollState())
+                .padding(24.dp)
+        ) {
+            Icon(Icons.Default.Lock, contentDescription = null, tint = PaginexNeonPurple, modifier = Modifier.size(48.dp).padding(bottom = 16.dp))
+            
+            Text(
+                "Security Operations Center",
+                color = PaginexNeonPurple,
+                fontSize = 24.sp,
+                fontWeight = FontWeight.Bold,
+                modifier = Modifier.padding(bottom = 16.dp)
+            )
+            
+            Text(
+                "At Paginex, the security of your data and personal information is our highest priority. We employ state-of-the-art security measures to ensure that your experience on our platform remains safe, secure, and uninterrupted.",
+                color = PaginexWhite.copy(alpha = 0.8f),
+                fontSize = 16.sp,
+                lineHeight = 24.sp,
+                modifier = Modifier.padding(bottom = 24.dp)
+            )
+
+            Text("Data Encryption", color = PaginexWhite, fontWeight = FontWeight.Bold, fontSize = 18.sp, modifier = Modifier.padding(bottom = 8.dp))
+            Text(
+                "All sensitive data transmitted between your device and our servers is encrypted using industry-standard TLS (Transport Layer Security). We ensure that any stored personal data, including your passwords and personal communications, are encrypted at rest using advanced cryptographic algorithms. Your peace of mind is guaranteed.",
+                color = PaginexWhite.copy(alpha = 0.8f),
+                fontSize = 16.sp,
+                lineHeight = 24.sp,
+                modifier = Modifier.padding(bottom = 24.dp)
+            )
+
+            Text("Account Protection", color = PaginexWhite, fontWeight = FontWeight.Bold, fontSize = 18.sp, modifier = Modifier.padding(bottom = 8.dp))
+            Text(
+                "We continuously monitor for suspicious login activities and unauthorized access attempts. If we detect an unusual login from a new device or location, we will promptly notify you and may require additional verification steps to ensure it is actually you accessing your account.",
+                color = PaginexWhite.copy(alpha = 0.8f),
+                fontSize = 16.sp,
+                lineHeight = 24.sp,
+                modifier = Modifier.padding(bottom = 24.dp)
+            )
+
+            Text("Third-Party Audits", color = PaginexWhite, fontWeight = FontWeight.Bold, fontSize = 18.sp, modifier = Modifier.padding(bottom = 8.dp))
+            Text(
+                "Paginex routinely undergoes security audits and vulnerability assessments conducted by independent, world-class cybersecurity firms. This rigorous testing helps us identify and mitigate potential vulnerabilities before they can be exploited, keeping our infrastructure hardened against modern threats.",
+                color = PaginexWhite.copy(alpha = 0.8f),
+                fontSize = 16.sp,
+                lineHeight = 24.sp,
+                modifier = Modifier.padding(bottom = 24.dp)
+            )
+            
+            Text("If you believe you have discovered a security vulnerability in Paginex, please report it to us immediately at security@paginex.com.", color = PaginexWhite.copy(alpha = 0.8f), fontSize = 16.sp, lineHeight = 24.sp, fontStyle = FontStyle.Italic)
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun AboutScreen(onBack: () -> Unit) {
+    Scaffold(
+        containerColor = PaginexSpace,
+        topBar = {
+            TopAppBar(
+                title = { Text("About Paginex", color = PaginexWhite, fontWeight = FontWeight.Bold, fontSize = 20.sp) },
+                navigationIcon = {
+                    IconButton(onClick = onBack) { Icon(Icons.Default.ArrowBack, null, tint = PaginexWhite) }
+                },
+                colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.Transparent)
+            )
+        }
+    ) { padding ->
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(padding)
+                .verticalScroll(rememberScrollState())
+                .padding(24.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            Image(
+                painter = androidx.compose.ui.res.painterResource(id = R.drawable.ic_paginex_icon),
+                contentDescription = "Paginex Logo",
+                modifier = Modifier.size(120.dp).padding(bottom = 24.dp),
+                contentScale = ContentScale.Fit
+            )
+            
+            Text(
+                "Paginex",
+                color = PaginexWhite,
+                fontSize = 32.sp,
+                fontWeight = FontWeight.Black,
+                letterSpacing = 2.sp,
+                modifier = Modifier.padding(bottom = 8.dp)
+            )
+            
+            Text(
+                "Version 1.0.4 (Build 4208)",
+                color = PaginexWhite.copy(alpha = 0.5f),
+                fontSize = 14.sp,
+                modifier = Modifier.padding(bottom = 32.dp)
+            )
+
+            Text(
+                "Paginex is the ultimate reading companion and social platform designed for book lovers. Our mission is to connect readers from across the globe, allowing them to share their literary journeys, review their favorite books, and build their unique personal galaxy of knowledge.",
+                color = PaginexWhite.copy(alpha = 0.8f),
+                fontSize = 16.sp,
+                lineHeight = 24.sp,
+                textAlign = TextAlign.Center,
+                modifier = Modifier.padding(bottom = 24.dp)
+            )
+            
+            Text(
+                "With Paginex, you don't just read a book; you document your journey. Whether you are exploring the newest science fiction epics or diving deep into classic literature, Paginex provides the tools you need to track your reading progress, save important notes, and engage in meaningful discussions with a community of like-minded individuals.",
+                color = PaginexWhite.copy(alpha = 0.8f),
+                fontSize = 16.sp,
+                lineHeight = 24.sp,
+                textAlign = TextAlign.Center,
+                modifier = Modifier.padding(bottom = 32.dp)
+            )
+            
+            Divider(color = PaginexGlassBorder, thickness = 1.dp, modifier = Modifier.padding(vertical = 16.dp))
+
+            Text("Developed by the Paginex Team", color = PaginexWhite, fontWeight = FontWeight.Bold, fontSize = 16.sp, modifier = Modifier.padding(bottom = 8.dp))
+            Text("© 2026 Paginex Inc. All rights reserved.", color = PaginexWhite.copy(alpha = 0.5f), fontSize = 14.sp, modifier = Modifier.padding(bottom = 24.dp))
         }
     }
 }
