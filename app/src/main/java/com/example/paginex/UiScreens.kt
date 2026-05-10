@@ -372,7 +372,11 @@ fun PaginexApp() {
                 arguments = listOf(navArgument("userId") { type = NavType.StringType })
             ) { backStackEntry -> 
                 val userId = backStackEntry.arguments?.getString("userId") ?: AuthService.getUid()
-                BookListsScreen(targetUserId = userId) { navController.popBackStack() } 
+                BookListsScreen(
+                    targetUserId = userId,
+                    onBack = { navController.popBackStack() },
+                    onBookClick = { bookId -> navController.navigate("detail/$bookId") }
+                ) 
             }
             composable(Screen.Drafts.route) {
                 DraftsScreen(
@@ -422,7 +426,8 @@ fun PaginexApp() {
                     postId = postId,
                     ownerOnly = ownerOnly,
                     onBack = { navController.popBackStack() },
-                    onReviewClick = { reviewPostId -> navController.navigate("post_list/$reviewPostId?mode=single") }
+                    onReviewClick = { reviewPostId -> navController.navigate("post_list/$reviewPostId?mode=single") },
+                    onBookClick = { bookId -> navController.navigate("detail/$bookId") }
                 ) 
             }
             composable(Screen.Settings.route) { 
@@ -1847,6 +1852,7 @@ fun ExploreScreen(onBookClick: (String) -> Unit = {}, onUserClick: (String) -> U
             bookList = list,
             isOwner = false,
             onDismiss = { selectedListForDetails = null },
+            onBookClick = onBookClick,
             onRemoveBookClick = {}
         )
     }
@@ -1859,7 +1865,8 @@ fun BookDetailScreen(
     postId: String?,
     ownerOnly: Boolean = false,
     onBack: () -> Unit,
-    onReviewClick: (String) -> Unit = {}
+    onReviewClick: (String) -> Unit = {},
+    onBookClick: (String) -> Unit = {}
 ) {
     var selectedListForDetails by remember { mutableStateOf<BookList?>(null) }
     val foundBook = AppCache.books.find { it.id == postId }
@@ -2013,7 +2020,7 @@ fun BookDetailScreen(
                     contentPadding = PaddingValues(horizontal = 0.dp),
                     horizontalArrangement = Arrangement.spacedBy(16.dp)
                 ) {
-                    items(listsWithBook, key = { it.id }) { list ->
+                    items(listsWithBook.distinctBy { it.id }, key = { it.id }) { list ->
                         Box(modifier = Modifier.width(280.dp).padding(end = 4.dp)) {
                             BookListCard(
                                 bookList = list,
@@ -2058,6 +2065,7 @@ fun BookDetailScreen(
             bookList = list,
             isOwner = false,
             onDismiss = { selectedListForDetails = null },
+            onBookClick = onBookClick,
             onRemoveBookClick = {}
         )
     }
@@ -2734,11 +2742,21 @@ fun SavedPostsScreen(onBookClick: (String) -> Unit = {}) {
 }
 
 
-
+fun getCoilModel(url: String): Any {
+    if (url.startsWith("data:image")) {
+        try {
+            val base64String = url.substringAfter("base64,")
+            return android.util.Base64.decode(base64String, android.util.Base64.DEFAULT)
+        } catch (e: Exception) {
+            return url
+        }
+    }
+    return url
+}
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun BookListsScreen(targetUserId: String, onBack: () -> Unit) {
+fun BookListsScreen(targetUserId: String, onBack: () -> Unit, onBookClick: (String) -> Unit) {
     val currentUid = AuthService.getUid()
     val isOwner = targetUserId == currentUid
     var selectedTab by remember { mutableIntStateOf(0) }
@@ -2757,12 +2775,21 @@ fun BookListsScreen(targetUserId: String, onBack: () -> Unit) {
     var selectedListForAdd by remember { mutableStateOf<BookList?>(null) }
     var listToEdit by remember { mutableStateOf<BookList?>(null) }
     var selectedListForDetails by remember { mutableStateOf<BookList?>(null) }
-
-
+    var showDeleteBlockedSnackbar by remember { mutableStateOf(false) }
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val snackbarHostState = remember { androidx.compose.material3.SnackbarHostState() }
+    
+    LaunchedEffect(showDeleteBlockedSnackbar) {
+        if (showDeleteBlockedSnackbar) {
+            snackbarHostState.showSnackbar("Cannot delete — this booklist has posts")
+            showDeleteBlockedSnackbar = false
+        }
+    }
 
 
     Scaffold(
         containerColor = PaginexSpace,
+        snackbarHost = { androidx.compose.material3.SnackbarHost(snackbarHostState) },
         topBar = {
             Column {
                 TopAppBar(
@@ -2823,7 +2850,7 @@ fun BookListsScreen(targetUserId: String, onBack: () -> Unit) {
                 verticalArrangement = Arrangement.spacedBy(16.dp),
                 contentPadding = PaddingValues(vertical = 16.dp)
             ) {
-                items(bookLists, key = { it.id }) { list ->
+                items(bookLists.distinctBy { it.id }, key = { it.id }) { list ->
                     BookListCard(
                         bookList = list,
                         isOwner = list.userId == currentUid,
@@ -2856,9 +2883,14 @@ fun BookListsScreen(targetUserId: String, onBack: () -> Unit) {
                         },
                         onEditClick = { listToEdit = list },
                         onDeleteClick = {
-                            AppCache.bookLists.removeAll { it.id == list.id }
                             kotlinx.coroutines.MainScope().launch {
-                                FirestoreService.deleteBookList(list.id)
+                                val hasPosts = FirestoreService.hasPostsForBooklist(list.id)
+                                if (hasPosts) {
+                                    showDeleteBlockedSnackbar = true
+                                } else {
+                                    AppCache.bookLists.removeAll { it.id == list.id }
+                                    FirestoreService.deleteBookList(list.id)
+                                }
                             }
                         },
                         onRemoveBookClick = { bookId ->
@@ -2882,11 +2914,19 @@ fun BookListsScreen(targetUserId: String, onBack: () -> Unit) {
     if (showCreateDialog) {
         CreateBookListDialog(
             onDismiss = { showCreateDialog = false },
-            onCreate = { name, desc, isPrivate ->
+            onCreate = { name, desc, isPrivate, coverUri ->
                 kotlinx.coroutines.MainScope().launch {
                     val newList = FirestoreService.createBookList(name, desc, targetUserId, isPrivate)
                     if (newList != null) {
-                        AppCache.bookLists.add(0, newList)
+                        // Upload cover image if provided
+                        var finalList = newList
+                        if (coverUri != null) {
+                            val coverUrl = FirestoreService.uploadBookListCoverImage(newList.id, coverUri, context)
+                            if (coverUrl != null) {
+                                finalList = newList.copy(coverUrl = coverUrl)
+                            }
+                        }
+                        AppCache.bookLists.add(0, finalList)
                     }
                     showCreateDialog = false
                 }
@@ -2898,19 +2938,26 @@ fun BookListsScreen(targetUserId: String, onBack: () -> Unit) {
         EditBookListDialog(
             bookList = list,
             onDismiss = { listToEdit = null },
-            onSave = { name, desc, isPrivate ->
-                val idx = AppCache.bookLists.indexOfFirst { it.id == list.id }
-                if (idx != -1) {
-                    AppCache.bookLists[idx] = AppCache.bookLists[idx].copy(
-                        name = name,
-                        description = desc,
-                        isPrivate = isPrivate
-                    )
-                }
+            onSave = { name, desc, isPrivate, coverUri ->
                 kotlinx.coroutines.MainScope().launch {
-                    FirestoreService.updateBookList(list.id, name, desc, isPrivate)
+                    // Upload cover image if a new one was selected
+                    var newCoverUrl: String? = null
+                    if (coverUri != null) {
+                        newCoverUrl = FirestoreService.uploadBookListCoverImage(list.id, coverUri, context)
+                    }
+                    
+                    val idx = AppCache.bookLists.indexOfFirst { it.id == list.id }
+                    if (idx != -1) {
+                        AppCache.bookLists[idx] = AppCache.bookLists[idx].copy(
+                            name = name,
+                            description = desc,
+                            isPrivate = isPrivate,
+                            coverUrl = newCoverUrl ?: AppCache.bookLists[idx].coverUrl
+                        )
+                    }
+                    FirestoreService.updateBookList(list.id, name, desc, isPrivate, newCoverUrl)
+                    listToEdit = null
                 }
-                listToEdit = null
             }
         )
     }
@@ -2941,6 +2988,7 @@ fun BookListsScreen(targetUserId: String, onBack: () -> Unit) {
             bookList = list,
             isOwner = list.userId == currentUid,
             onDismiss = { selectedListForDetails = null },
+            onBookClick = onBookClick,
             onRemoveBookClick = { bookId ->
                 val idx = AppCache.bookLists.indexOfFirst { it.id == list.id }
                 if (idx != -1) {
@@ -2964,6 +3012,7 @@ fun BookListDetailsDialog(
     bookList: BookList,
     isOwner: Boolean,
     onDismiss: () -> Unit,
+    onBookClick: (String) -> Unit,
     onRemoveBookClick: (String) -> Unit
 ) {
     AlertDialog(
@@ -2972,66 +3021,153 @@ fun BookListDetailsDialog(
         shape = RoundedCornerShape(24.dp),
         title = {
             Column {
-                Text(bookList.name, color = PaginexWhite, fontWeight = FontWeight.Bold, fontSize = 20.sp)
-                if (bookList.description.isNotEmpty()) {
+                Text(
+                    when {
+                        bookList.isDeleted -> "Deleted Booklist"
+                        bookList.isSecret -> "Secret Booklist"
+                        else -> bookList.name
+                    },
+                    color = when {
+                        bookList.isDeleted -> Color.Gray
+                        bookList.isSecret -> Color(0xFFFF6B6B)
+                        else -> PaginexWhite
+                    },
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 20.sp
+                )
+                // Owner name (hidden for secret/deleted)
+                if (!bookList.isDeleted && !bookList.isSecret && bookList.ownerName.isNotEmpty() && !isOwner) {
+                    Text(bookList.ownerName, color = PaginexNeonTeal.copy(alpha = 0.8f), fontSize = 12.sp)
+                }
+                if (!bookList.isDeleted && !bookList.isSecret && bookList.description.isNotEmpty()) {
                     Text(bookList.description, color = PaginexWhite.copy(alpha = 0.7f), fontSize = 14.sp)
                 }
             }
         },
         text = {
-            if (bookList.books.isEmpty()) {
-                Text("No books in this list.", color = PaginexWhite.copy(alpha = 0.7f))
-            } else {
-                LazyVerticalGrid(
-                    columns = GridCells.Fixed(3),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    verticalArrangement = Arrangement.spacedBy(16.dp),
-                    modifier = Modifier.fillMaxWidth().heightIn(max = 400.dp)
-                ) {
-                    items(bookList.books, key = { it.id }) { book ->
-                        Box(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clip(RoundedCornerShape(8.dp))
-                                .background(PaginexGlass)
-                                .border(1.dp, PaginexGlassBorder, RoundedCornerShape(8.dp))
+            when {
+                bookList.isDeleted -> {
+                    Column(
+                        modifier = Modifier.fillMaxWidth().padding(vertical = 24.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally
+                    ) {
+                        Icon(Icons.Default.Delete, null, tint = Color.Gray, modifier = Modifier.size(48.dp))
+                        Spacer(modifier = Modifier.height(12.dp))
+                        Text(
+                            "This booklist has been deleted and is no longer available.",
+                            color = Color.Gray,
+                            fontSize = 14.sp,
+                            textAlign = TextAlign.Center
+                        )
+                    }
+                }
+                bookList.isSecret && bookList.books.isNotEmpty() -> {
+                    // Secret booklist: show content but with a notice
+                    Column {
+                        Text(
+                            "The owner made this list private. You can still see the books you saved.",
+                            color = PaginexWhite.copy(alpha = 0.5f),
+                            fontSize = 12.sp,
+                            modifier = Modifier.padding(bottom = 12.dp)
+                        )
+                        LazyVerticalGrid(
+                            columns = GridCells.Fixed(3),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            verticalArrangement = Arrangement.spacedBy(16.dp),
+                            modifier = Modifier.fillMaxWidth().heightIn(max = 400.dp)
                         ) {
-                            Column(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalAlignment = Alignment.CenterHorizontally
-                            ) {
+                            items(bookList.books.distinctBy { it.id }, key = { it.id }) { book ->
                                 Box(
-                                    modifier = Modifier.fillMaxWidth().height(100.dp),
-                                    contentAlignment = Alignment.TopEnd
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .height(160.dp)
+                                        .clip(RoundedCornerShape(8.dp))
+                                        .background(PaginexGlass)
+                                        .border(1.dp, PaginexGlassBorder, RoundedCornerShape(8.dp))
+                                        .clickable { onBookClick(book.id) }
                                 ) {
-                                    AsyncImage(
-                                        model = book.coverUrl,
-                                        contentDescription = book.title,
-                                        modifier = Modifier.fillMaxSize(),
-                                        contentScale = ContentScale.Crop
-                                    )
-                                    if (isOwner) {
-                                        Box(
-                                            modifier = Modifier
-                                                .padding(4.dp)
-                                                .size(24.dp)
-                                                .background(Color.Black.copy(alpha = 0.6f), CircleShape)
-                                                .clickable { onRemoveBookClick(book.id) },
-                                            contentAlignment = Alignment.Center
-                                        ) {
-                                            Icon(Icons.Default.Close, null, tint = Color.White, modifier = Modifier.size(14.dp))
-                                        }
+                                    Column(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalAlignment = Alignment.CenterHorizontally
+                                    ) {
+                                        AsyncImage(
+                                            model = getCoilModel(book.coverUrl),
+                                            contentDescription = book.title,
+                                            modifier = Modifier.fillMaxWidth().height(100.dp),
+                                            contentScale = ContentScale.Crop
+                                        )
+                                        Text(
+                                            text = book.title,
+                                            color = PaginexWhite,
+                                            fontSize = 11.sp,
+                                            maxLines = 2,
+                                            modifier = Modifier.padding(6.dp),
+                                            lineHeight = 12.sp,
+                                            textAlign = TextAlign.Center
+                                        )
                                     }
                                 }
-                                Text(
-                                    text = book.title,
-                                    color = PaginexWhite,
-                                    fontSize = 11.sp,
-                                    maxLines = 2,
-                                    modifier = Modifier.padding(6.dp),
-                                    lineHeight = 12.sp,
-                                    textAlign = TextAlign.Center
-                                )
+                            }
+                        }
+                    }
+                }
+                bookList.books.isEmpty() -> {
+                    Text("No books in this list.", color = PaginexWhite.copy(alpha = 0.7f))
+                }
+                else -> {
+                    LazyVerticalGrid(
+                        columns = GridCells.Fixed(3),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalArrangement = Arrangement.spacedBy(16.dp),
+                        modifier = Modifier.fillMaxWidth().heightIn(max = 400.dp)
+                    ) {
+                        items(bookList.books.distinctBy { it.id }, key = { it.id }) { book ->
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(160.dp)
+                                    .clip(RoundedCornerShape(8.dp))
+                                    .background(PaginexGlass)
+                                    .border(1.dp, PaginexGlassBorder, RoundedCornerShape(8.dp))
+                                    .clickable { onBookClick(book.id) }
+                            ) {
+                                Column(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalAlignment = Alignment.CenterHorizontally
+                                ) {
+                                    Box(
+                                        modifier = Modifier.fillMaxWidth().height(100.dp),
+                                        contentAlignment = Alignment.TopEnd
+                                    ) {
+                                        AsyncImage(
+                                            model = getCoilModel(book.coverUrl),
+                                            contentDescription = book.title,
+                                            modifier = Modifier.fillMaxSize(),
+                                            contentScale = ContentScale.Crop
+                                        )
+                                        if (isOwner) {
+                                            Box(
+                                                modifier = Modifier
+                                                    .padding(4.dp)
+                                                    .size(24.dp)
+                                                    .background(Color.Black.copy(alpha = 0.6f), CircleShape)
+                                                    .clickable { onRemoveBookClick(book.id) },
+                                                contentAlignment = Alignment.Center
+                                            ) {
+                                                Icon(Icons.Default.Close, null, tint = Color.White, modifier = Modifier.size(14.dp))
+                                            }
+                                        }
+                                    }
+                                    Text(
+                                        text = book.title,
+                                        color = PaginexWhite,
+                                        fontSize = 11.sp,
+                                        maxLines = 2,
+                                        modifier = Modifier.padding(6.dp),
+                                        lineHeight = 12.sp,
+                                        textAlign = TextAlign.Center
+                                    )
+                                }
                             }
                         }
                     }
@@ -3046,10 +3182,28 @@ fun BookListDetailsDialog(
 }
 
 @Composable
-fun EditBookListDialog(bookList: BookList, onDismiss: () -> Unit, onSave: (String, String, Boolean) -> Unit) {
+fun EditBookListDialog(bookList: BookList, onDismiss: () -> Unit, onSave: (String, String, Boolean, android.net.Uri?) -> Unit) {
     var name by remember { mutableStateOf(bookList.name) }
     var description by remember { mutableStateOf(bookList.description) }
     var isPrivate by remember { mutableStateOf(bookList.isPrivate) }
+    var coverUri by remember { mutableStateOf<android.net.Uri?>(null) }
+    var hasPosts by remember { mutableStateOf(false) }
+    var checkingPosts by remember { mutableStateOf(true) }
+
+    // Check if this booklist has posts (to restrict private toggle)
+    LaunchedEffect(bookList.id) {
+        hasPosts = FirestoreService.hasPostsForBooklist(bookList.id)
+        checkingPosts = false
+    }
+
+    val photoPickerLauncher = androidx.activity.compose.rememberLauncherForActivityResult(
+        contract = androidx.activity.result.contract.ActivityResultContracts.GetContent()
+    ) { uri: android.net.Uri? ->
+        coverUri = uri
+    }
+
+    // Can only toggle to private if: currently private already OR no posts exist
+    val canTogglePrivate = bookList.isPrivate || !hasPosts
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -3058,6 +3212,44 @@ fun EditBookListDialog(bookList: BookList, onDismiss: () -> Unit, onSave: (Strin
         title = { Text("Edit List", color = PaginexWhite, fontWeight = FontWeight.Bold) },
         text = {
             Column {
+                // Cover photo picker
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(120.dp)
+                        .clip(RoundedCornerShape(16.dp))
+                        .background(PaginexGlass)
+                        .border(1.dp, PaginexGlassBorder, RoundedCornerShape(16.dp))
+                        .clickable { photoPickerLauncher.launch("image/*") },
+                    contentAlignment = Alignment.Center
+                ) {
+                    val displayCover = coverUri ?: bookList.coverUrl.takeIf { it.isNotEmpty() }
+                    if (displayCover != null) {
+                        AsyncImage(
+                            model = if (displayCover is String) getCoilModel(displayCover) else displayCover,
+                            contentDescription = "Cover",
+                            modifier = Modifier.fillMaxSize().clip(RoundedCornerShape(16.dp)),
+                            contentScale = ContentScale.Crop
+                        )
+                        Box(
+                            modifier = Modifier
+                                .align(Alignment.BottomEnd)
+                                .padding(8.dp)
+                                .size(32.dp)
+                                .background(PaginexGalaxy.copy(alpha = 0.7f), CircleShape),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(Icons.Default.Edit, null, tint = PaginexWhite, modifier = Modifier.size(16.dp))
+                        }
+                    } else {
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            Icon(Icons.Default.AddPhotoAlternate, null, tint = PaginexNeonPurple, modifier = Modifier.size(36.dp))
+                            Spacer(modifier = Modifier.height(4.dp))
+                            Text("Add Cover Photo", color = PaginexWhite.copy(alpha = 0.7f), fontSize = 12.sp)
+                        }
+                    }
+                }
+                Spacer(modifier = Modifier.height(16.dp))
                 OutlinedTextField(
                     value = name,
                     onValueChange = { name = it },
@@ -3085,10 +3277,20 @@ fun EditBookListDialog(bookList: BookList, onDismiss: () -> Unit, onSave: (Strin
                 )
                 Spacer(modifier = Modifier.height(16.dp))
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text("Private List", color = PaginexWhite, modifier = Modifier.weight(1f))
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text("Private List", color = if (canTogglePrivate) PaginexWhite else PaginexWhite.copy(alpha = 0.4f))
+                        if (!canTogglePrivate && !checkingPosts) {
+                            Text(
+                                "Cannot make private — list has posts",
+                                color = PaginexNeonPink.copy(alpha = 0.8f),
+                                fontSize = 10.sp
+                            )
+                        }
+                    }
                     Switch(
                         checked = isPrivate,
-                        onCheckedChange = { isPrivate = it },
+                        onCheckedChange = { if (canTogglePrivate) isPrivate = it },
+                        enabled = canTogglePrivate && !checkingPosts,
                         colors = SwitchDefaults.colors(checkedTrackColor = PaginexNeonPurple)
                     )
                 }
@@ -3096,7 +3298,7 @@ fun EditBookListDialog(bookList: BookList, onDismiss: () -> Unit, onSave: (Strin
         },
         confirmButton = {
             Button(
-                onClick = { if (name.isNotBlank()) onSave(name, description, isPrivate) },
+                onClick = { if (name.isNotBlank()) onSave(name, description, isPrivate, coverUri) },
                 colors = ButtonDefaults.buttonColors(containerColor = PaginexNeonPurple)
             ) {
                 Text("Save", color = PaginexWhite, fontWeight = FontWeight.Bold)
@@ -3121,119 +3323,165 @@ fun BookListCard(
     onRemoveBookClick: (String) -> Unit = {}
 ) {
     var menuExpanded by remember { mutableStateOf(false) }
+    
+    // Determine display properties based on state
+    val displayName = when {
+        bookList.isDeleted -> "Deleted Booklist"
+        bookList.isSecret -> "Secret Booklist"
+        else -> bookList.name
+    }
+    val cardAlpha = if (bookList.isDeleted) 0.5f else 1f
+    val isClickable = !bookList.isDeleted
 
     Card(
-        modifier = Modifier.fillMaxWidth().clickable { onListClick() },
+        modifier = Modifier
+            .fillMaxWidth()
+            .then(if (isClickable) Modifier.clickable { onListClick() } else Modifier)
+            .graphicsLayer(alpha = cardAlpha),
         shape = RoundedCornerShape(20.dp),
-        colors = CardDefaults.cardColors(containerColor = PaginexGlass),
-        border = BorderStroke(1.dp, PaginexGlassBorder)
+        colors = CardDefaults.cardColors(containerColor = if (bookList.isDeleted) PaginexGlass.copy(alpha = 0.3f) else PaginexGlass),
+        border = BorderStroke(1.dp, if (bookList.isDeleted) PaginexGlassBorder.copy(alpha = 0.3f) else PaginexGlassBorder)
     ) {
         Column(modifier = Modifier.padding(16.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                // Cover: stacked book covers or placeholder
+                // Cover
                 Box(
                     modifier = Modifier
                         .size(56.dp)
                         .clip(RoundedCornerShape(12.dp))
-                        .background(PaginexNeonPurple.copy(alpha = 0.15f)),
+                        .background(
+                            when {
+                                bookList.isDeleted -> Color.Gray.copy(alpha = 0.15f)
+                                bookList.isSecret -> Color(0xFFFF6B6B).copy(alpha = 0.15f)
+                                else -> PaginexNeonPurple.copy(alpha = 0.15f)
+                            }
+                        ),
                     contentAlignment = Alignment.Center
                 ) {
-                    if (bookList.coverUrl.isNotEmpty()) {
-                        AsyncImage(
-                            model = bookList.coverUrl,
+                    when {
+                        bookList.isDeleted -> Icon(Icons.Default.Delete, null, tint = Color.Gray, modifier = Modifier.size(28.dp))
+                        bookList.isSecret -> Icon(Icons.Default.Lock, null, tint = Color(0xFFFF6B6B), modifier = Modifier.size(28.dp))
+                        bookList.coverUrl.isNotEmpty() -> AsyncImage(
+                            model = getCoilModel(bookList.coverUrl),
                             contentDescription = null,
                             modifier = Modifier.fillMaxSize().clip(RoundedCornerShape(12.dp)),
                             contentScale = ContentScale.Crop
                         )
-                    } else {
-                        Icon(Icons.Default.List, null, tint = PaginexNeonPurple, modifier = Modifier.size(28.dp))
+                        else -> Icon(Icons.Default.List, null, tint = PaginexNeonPurple, modifier = Modifier.size(28.dp))
                     }
                 }
                 Spacer(modifier = Modifier.width(14.dp))
                 Column(modifier = Modifier.weight(1f)) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Text(
-                            bookList.name, 
+                            displayName, 
                             fontWeight = FontWeight.Bold, 
                             fontSize = 16.sp, 
-                            color = PaginexWhite,
+                            color = when {
+                                bookList.isDeleted -> Color.Gray
+                                bookList.isSecret -> Color(0xFFFF6B6B)
+                                else -> PaginexWhite
+                            },
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis,
                             modifier = Modifier.weight(1f, fill = false)
                         )
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Icon(
-                            imageVector = if (bookList.isPrivate) Icons.Default.Lock else Icons.Default.Public,
-                            contentDescription = null,
-                            tint = PaginexWhite.copy(alpha = 0.7f),
-                            modifier = Modifier.size(14.dp)
-                        )
+                        if (!bookList.isDeleted && !bookList.isSecret) {
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Icon(
+                                imageVector = if (bookList.isPrivate) Icons.Default.Lock else Icons.Default.Public,
+                                contentDescription = null,
+                                tint = PaginexWhite.copy(alpha = 0.7f),
+                                modifier = Modifier.size(14.dp)
+                            )
+                        }
                     }
-                    if (bookList.description.isNotEmpty()) {
+                    // Owner name (hidden for secret/deleted booklists)
+                    if (!bookList.isDeleted && !bookList.isSecret && bookList.ownerName.isNotEmpty() && !isOwner) {
+                        Text(bookList.ownerName, fontSize = 11.sp, color = PaginexNeonTeal.copy(alpha = 0.8f), maxLines = 1)
+                    }
+                    if (!bookList.isDeleted && !bookList.isSecret && bookList.description.isNotEmpty()) {
                         Text(bookList.description, fontSize = 12.sp, color = PaginexWhite.copy(alpha = 0.7f), maxLines = 1, overflow = TextOverflow.Ellipsis)
                     }
-                    Text("${bookList.books.size} books", fontSize = 12.sp, color = PaginexNeonPurple.copy(alpha = 0.8f))
+                    if (bookList.isDeleted) {
+                        Text("This booklist has been removed", fontSize = 11.sp, color = Color.Gray.copy(alpha = 0.7f))
+                    } else if (bookList.isSecret) {
+                        Text("This booklist was made private by its owner", fontSize = 11.sp, color = PaginexWhite.copy(alpha = 0.5f))
+                    } else {
+                        Text("${bookList.books.size} books", fontSize = 12.sp, color = PaginexNeonPurple.copy(alpha = 0.8f))
+                    }
                 }
                 
-                if (isOwner) {
-                    IconButton(onClick = onAddBook) {
-                        Icon(Icons.Default.Add, null, tint = PaginexNeonPurple)
-                    }
-                    Box {
-                        IconButton(onClick = { menuExpanded = true }) {
-                            Icon(Icons.Default.MoreVert, null, tint = PaginexWhite.copy(alpha = 0.7f))
+                // Only show actions for non-deleted lists
+                if (!bookList.isDeleted) {
+                    if (isOwner) {
+                        IconButton(onClick = onAddBook) {
+                            Icon(Icons.Default.Add, null, tint = PaginexNeonPurple)
                         }
-                        DropdownMenu(
-                            expanded = menuExpanded,
-                            onDismissRequest = { menuExpanded = false },
-                            modifier = Modifier.background(PaginexGalaxy)
-                        ) {
-                            DropdownMenuItem(
-                                text = { Text("Edit", color = PaginexWhite) },
-                                onClick = { menuExpanded = false; onEditClick() },
-                                leadingIcon = { Icon(Icons.Default.Edit, null, tint = PaginexNeonTeal) }
-                            )
-                            DropdownMenuItem(
-                                text = { Text("Delete", color = Color.Red) },
-                                onClick = { menuExpanded = false; onDeleteClick() },
-                                leadingIcon = { Icon(Icons.Default.Delete, null, tint = PaginexNeonPink) }
-                            )
+                        Box {
+                            IconButton(onClick = { menuExpanded = true }) {
+                                Icon(Icons.Default.MoreVert, null, tint = PaginexWhite.copy(alpha = 0.7f))
+                            }
+                            DropdownMenu(
+                                expanded = menuExpanded,
+                                onDismissRequest = { menuExpanded = false },
+                                modifier = Modifier.background(PaginexGalaxy)
+                            ) {
+                                DropdownMenuItem(
+                                    text = { Text("Edit", color = PaginexWhite) },
+                                    onClick = { menuExpanded = false; onEditClick() },
+                                    leadingIcon = { Icon(Icons.Default.Edit, null, tint = PaginexNeonTeal) }
+                                )
+                                DropdownMenuItem(
+                                    text = { Text("Delete", color = Color.Red) },
+                                    onClick = { menuExpanded = false; onDeleteClick() },
+                                    leadingIcon = { Icon(Icons.Default.Delete, null, tint = PaginexNeonPink) }
+                                )
+                            }
                         }
-                    }
-                } else {
-                    // Social actions for non-owned public lists
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        IconButton(onClick = onLikeClick, modifier = Modifier.size(32.dp)) {
-                            Icon(
-                                imageVector = if (bookList.isLiked) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
-                                contentDescription = null,
-                                tint = if (bookList.isLiked) Color.Red else PaginexWhite,
-                                modifier = Modifier.size(20.dp)
-                            )
-                        }
-                        Text(bookList.likesCount.toString(), color = PaginexWhite, fontSize = 12.sp)
-                        
-                        IconButton(onClick = onSaveClick, modifier = Modifier.size(32.dp)) {
-                            Icon(
-                                imageVector = if (bookList.isSaved) Icons.Default.Bookmark else Icons.Default.BookmarkBorder,
-                                contentDescription = null,
-                                tint = if (bookList.isSaved) PaginexNeonPurple else PaginexWhite,
-                                modifier = Modifier.size(20.dp)
-                            )
+                    } else {
+                        // Social actions for non-owned lists (Secret lists only get Save/Unsave action)
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            if (!bookList.isSecret) {
+                                IconButton(onClick = onLikeClick, modifier = Modifier.size(32.dp)) {
+                                    Icon(
+                                        imageVector = if (bookList.isLiked) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
+                                        contentDescription = null,
+                                        tint = if (bookList.isLiked) Color.Red else PaginexWhite,
+                                        modifier = Modifier.size(20.dp)
+                                    )
+                                }
+                                Text(bookList.likesCount.toString(), color = PaginexWhite, fontSize = 12.sp)
+                            }
+                            
+                            IconButton(onClick = onSaveClick, modifier = Modifier.size(32.dp)) {
+                                Icon(
+                                    imageVector = if (bookList.isSaved) Icons.Default.Bookmark else Icons.Default.BookmarkBorder,
+                                    contentDescription = null,
+                                    tint = if (bookList.isSaved) PaginexNeonPurple else PaginexWhite,
+                                    modifier = Modifier.size(20.dp)
+                                )
+                            }
                         }
                     }
                 }
             }
         }
     }
-
 }
 
 @Composable
-fun CreateBookListDialog(onDismiss: () -> Unit, onCreate: (String, String, Boolean) -> Unit) {
+fun CreateBookListDialog(onDismiss: () -> Unit, onCreate: (String, String, Boolean, android.net.Uri?) -> Unit) {
     var name by remember { mutableStateOf("") }
     var description by remember { mutableStateOf("") }
     var isPrivate by remember { mutableStateOf(false) }
+    var coverUri by remember { mutableStateOf<android.net.Uri?>(null) }
+
+    val photoPickerLauncher = androidx.activity.compose.rememberLauncherForActivityResult(
+        contract = androidx.activity.result.contract.ActivityResultContracts.GetContent()
+    ) { uri: android.net.Uri? ->
+        coverUri = uri
+    }
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -3244,6 +3492,44 @@ fun CreateBookListDialog(onDismiss: () -> Unit, onCreate: (String, String, Boole
         },
         text = {
             Column {
+                // Cover photo picker
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(120.dp)
+                        .clip(RoundedCornerShape(16.dp))
+                        .background(PaginexGlass)
+                        .border(1.dp, PaginexGlassBorder, RoundedCornerShape(16.dp))
+                        .clickable { photoPickerLauncher.launch("image/*") },
+                    contentAlignment = Alignment.Center
+                ) {
+                    if (coverUri != null) {
+                        AsyncImage(
+                            model = coverUri,
+                            contentDescription = "Cover",
+                            modifier = Modifier.fillMaxSize().clip(RoundedCornerShape(16.dp)),
+                            contentScale = ContentScale.Crop
+                        )
+                        // Overlay change icon
+                        Box(
+                            modifier = Modifier
+                                .align(Alignment.BottomEnd)
+                                .padding(8.dp)
+                                .size(32.dp)
+                                .background(PaginexGalaxy.copy(alpha = 0.7f), CircleShape),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(Icons.Default.Edit, null, tint = PaginexWhite, modifier = Modifier.size(16.dp))
+                        }
+                    } else {
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            Icon(Icons.Default.AddPhotoAlternate, null, tint = PaginexNeonPurple, modifier = Modifier.size(36.dp))
+                            Spacer(modifier = Modifier.height(4.dp))
+                            Text("Add Cover Photo", color = PaginexWhite.copy(alpha = 0.7f), fontSize = 12.sp)
+                        }
+                    }
+                }
+                Spacer(modifier = Modifier.height(16.dp))
                 OutlinedTextField(
                     value = name,
                     onValueChange = { name = it },
@@ -3282,7 +3568,7 @@ fun CreateBookListDialog(onDismiss: () -> Unit, onCreate: (String, String, Boole
         },
         confirmButton = {
             Button(
-                onClick = { if (name.isNotBlank()) onCreate(name, description, isPrivate) },
+                onClick = { if (name.isNotBlank()) onCreate(name, description, isPrivate, coverUri) },
                 colors = ButtonDefaults.buttonColors(containerColor = PaginexNeonPurple)
             ) {
                 Text("Create", color = PaginexWhite, fontWeight = FontWeight.Bold)
@@ -5624,15 +5910,15 @@ fun PrivacyScreen(onBack: () -> Unit) {
                 .padding(24.dp)
         ) {
             Text(
-                "Your Privacy Matters to Us",
+                "Privacy Policy",
                 color = PaginexNeonTeal,
                 fontSize = 24.sp,
                 fontWeight = FontWeight.Bold,
                 modifier = Modifier.padding(bottom = 16.dp)
             )
-            
+
             Text(
-                "Welcome to Paginex. We are committed to protecting your personal information and your right to privacy. If you have any questions or concerns about our policy, or our practices with regards to your personal information, please contact us.",
+                "Paginex is a social book-sharing platform where readers post reviews, track their reading progress, and connect with other book lovers. This Privacy Policy explains what personal data we collect, why we collect it, and how we handle it. By creating an account you agree to the practices described below.",
                 color = PaginexWhite.copy(alpha = 0.8f),
                 fontSize = 16.sp,
                 lineHeight = 24.sp,
@@ -5641,10 +5927,13 @@ fun PrivacyScreen(onBack: () -> Unit) {
 
             Text("1. Information We Collect", color = PaginexWhite, fontWeight = FontWeight.Bold, fontSize = 18.sp, modifier = Modifier.padding(bottom = 8.dp))
             Text(
-                "We collect personal information that you voluntarily provide to us when registering at the Services expressing an interest in obtaining information about us or our products and services, when participating in activities on the Services or otherwise contacting us.\n\n" +
-                "The personal information that we collect depends on the context of your interactions with us and the Services, the choices you make and the products and features you use. The personal information we collect can include the following:\n\n" +
-                "• Name and Contact Data. We collect your first and last name, email address, postal address, phone number, and other similar contact data.\n" +
-                "• Credentials. We collect passwords, password hints, and similar security information used for authentication and account access.",
+                "When you register and use Paginex, we collect the following information that you provide directly:\n\n" +
+                "• Account credentials — your email address and password, used to create and secure your account through Firebase Authentication.\n" +
+                "• Profile information — your first name, last name, username, biography, location, and date of birth, which you enter during profile setup.\n" +
+                "• Profile photo — if you choose to upload an avatar, the image is stored in Firebase Storage and linked to your profile.\n" +
+                "• User-generated content — book reviews, ratings, comments, reading statuses (such as Reading, Completed, Want to Read, On-Hold, or Dropped), book lists you create, and your list of favorite books displayed in your Galaxy.\n" +
+                "• Social interactions — your follows, likes, and saved posts, which are stored to personalize your feed and reading experience.\n\n" +
+                "We do not collect phone numbers, physical addresses, payment information, or device location data.",
                 color = PaginexWhite.copy(alpha = 0.8f),
                 fontSize = 16.sp,
                 lineHeight = 24.sp,
@@ -5653,28 +5942,58 @@ fun PrivacyScreen(onBack: () -> Unit) {
 
             Text("2. How We Use Your Information", color = PaginexWhite, fontWeight = FontWeight.Bold, fontSize = 18.sp, modifier = Modifier.padding(bottom = 8.dp))
             Text(
-                "We use personal information collected via our Services for a variety of business purposes described below. We process your personal information for these purposes in reliance on our legitimate business interests, in order to enter into or perform a contract with you, with your consent, and/or for compliance with our legal obligations.\n\n" +
-                "We use the information we collect or receive:\n" +
-                "• To facilitate account creation and logon process.\n" +
-                "• To send administrative information to you.\n" +
-                "• To fulfill and manage your orders, payments, returns, and exchanges.",
+                "We use the data we collect for the following purposes:\n\n" +
+                "• To create, authenticate, and maintain your account via Firebase Authentication, including email verification.\n" +
+                "• To display your profile, posts, reviews, and reading activity to other users of the platform.\n" +
+                "• To populate your personal Home feed with posts from users you follow.\n" +
+                "• To power the Explore screen so other readers can discover your reviews and book lists.\n" +
+                "• To let you save posts, build curated book lists, and track your reading progress across multiple books.\n" +
+                "• To render your Galaxy and Constellation views, which visualize your favorite books and reading achievements.\n" +
+                "• To send you a verification email when you register and password-reset emails when you request them.",
                 color = PaginexWhite.copy(alpha = 0.8f),
                 fontSize = 16.sp,
                 lineHeight = 24.sp,
                 modifier = Modifier.padding(bottom = 24.dp)
             )
 
-            Text("3. Will Your Information be Shared with Anyone?", color = PaginexWhite, fontWeight = FontWeight.Bold, fontSize = 18.sp, modifier = Modifier.padding(bottom = 8.dp))
+            Text("3. Data Storage and Infrastructure", color = PaginexWhite, fontWeight = FontWeight.Bold, fontSize = 18.sp, modifier = Modifier.padding(bottom = 8.dp))
             Text(
-                "We only share and disclose your information in the following situations:\n\n" +
-                "• Compliance with Laws. We may disclose your information where we are legally required to do so in order to comply with applicable law, governmental requests, a judicial proceeding, court order, or legal process.\n" +
-                "• Vital Interests and Legal Rights. We may disclose your information where we believe it is necessary to investigate, prevent, or take action regarding potential violations of our policies, suspected fraud, situations involving potential threats to the safety of any person and illegal activities.",
+                "All user data is stored on Google Firebase infrastructure:\n\n" +
+                "• Firebase Authentication manages your login credentials and session tokens.\n" +
+                "• Cloud Firestore stores your profile details, posts, comments, likes, follows, book lists, reading statuses, and saved items.\n" +
+                "• Firebase Storage hosts uploaded profile photos.\n\n" +
+                "Data is transmitted over HTTPS and stored in Google-managed data centers that comply with industry-standard security certifications.",
                 color = PaginexWhite.copy(alpha = 0.8f),
                 fontSize = 16.sp,
                 lineHeight = 24.sp,
                 modifier = Modifier.padding(bottom = 24.dp)
             )
-            
+
+            Text("4. Data Sharing", color = PaginexWhite, fontWeight = FontWeight.Bold, fontSize = 18.sp, modifier = Modifier.padding(bottom = 8.dp))
+            Text(
+                "Paginex does not sell, rent, or trade your personal information to third parties. We do not integrate third-party advertising or analytics SDKs. Your data is shared only in the following cases:\n\n" +
+                "• Public profile content — your username, display name, avatar, bio, reviews, and book lists are visible to other Paginex users as part of the social features of the app.\n" +
+                "• Legal obligations — we may disclose information if required by law, court order, or governmental request.\n" +
+                "• Firebase services — your data is processed by Google Firebase as our backend infrastructure provider, subject to Google's data processing terms.",
+                color = PaginexWhite.copy(alpha = 0.8f),
+                fontSize = 16.sp,
+                lineHeight = 24.sp,
+                modifier = Modifier.padding(bottom = 24.dp)
+            )
+
+            Text("5. Account Deletion", color = PaginexWhite, fontWeight = FontWeight.Bold, fontSize = 18.sp, modifier = Modifier.padding(bottom = 8.dp))
+            Text(
+                "You can delete your account at any time from Settings > Delete Account. When you delete your account:\n\n" +
+                "• Your profile is anonymized — your name, username, avatar, bio, and location are replaced with placeholder values and your account is marked as inactive.\n" +
+                "• Your personal data is removed — your followers, following relationships, reading statuses, book lists, saved items, and likes are permanently deleted.\n" +
+                "• Your posts and comments remain visible under the label \"Deleted Account\" to preserve the continuity of conversations for other users.\n" +
+                "• Your Firebase Authentication account is permanently deleted.",
+                color = PaginexWhite.copy(alpha = 0.8f),
+                fontSize = 16.sp,
+                lineHeight = 24.sp,
+                modifier = Modifier.padding(bottom = 24.dp)
+            )
+
             Text("Last updated: May 10, 2026", color = PaginexWhite.copy(alpha = 0.5f), fontSize = 14.sp)
         }
     }
@@ -5703,51 +6022,70 @@ fun SecurityScreen(onBack: () -> Unit) {
                 .padding(24.dp)
         ) {
             Icon(Icons.Default.Lock, contentDescription = null, tint = PaginexNeonPurple, modifier = Modifier.size(48.dp).padding(bottom = 16.dp))
-            
+
             Text(
-                "Security Operations Center",
+                "How We Keep Your Account Safe",
                 color = PaginexNeonPurple,
                 fontSize = 24.sp,
                 fontWeight = FontWeight.Bold,
                 modifier = Modifier.padding(bottom = 16.dp)
             )
-            
+
             Text(
-                "At Paginex, the security of your data and personal information is our highest priority. We employ state-of-the-art security measures to ensure that your experience on our platform remains safe, secure, and uninterrupted.",
+                "Paginex is built on Google Firebase, which provides enterprise-grade security infrastructure. Below is a transparent overview of the specific measures we use to protect your account and data.",
                 color = PaginexWhite.copy(alpha = 0.8f),
                 fontSize = 16.sp,
                 lineHeight = 24.sp,
                 modifier = Modifier.padding(bottom = 24.dp)
             )
 
-            Text("Data Encryption", color = PaginexWhite, fontWeight = FontWeight.Bold, fontSize = 18.sp, modifier = Modifier.padding(bottom = 8.dp))
+            Text("Authentication & Email Verification", color = PaginexWhite, fontWeight = FontWeight.Bold, fontSize = 18.sp, modifier = Modifier.padding(bottom = 8.dp))
             Text(
-                "All sensitive data transmitted between your device and our servers is encrypted using industry-standard TLS (Transport Layer Security). We ensure that any stored personal data, including your passwords and personal communications, are encrypted at rest using advanced cryptographic algorithms. Your peace of mind is guaranteed.",
+                "Your account is managed through Firebase Authentication. When you sign up with your email and password, a verification email is sent to confirm your identity. You cannot access the main features of Paginex until your email address is verified. This prevents unauthorized account creation using someone else's email address.",
                 color = PaginexWhite.copy(alpha = 0.8f),
                 fontSize = 16.sp,
                 lineHeight = 24.sp,
                 modifier = Modifier.padding(bottom = 24.dp)
             )
 
-            Text("Account Protection", color = PaginexWhite, fontWeight = FontWeight.Bold, fontSize = 18.sp, modifier = Modifier.padding(bottom = 8.dp))
+            Text("Password Security", color = PaginexWhite, fontWeight = FontWeight.Bold, fontSize = 18.sp, modifier = Modifier.padding(bottom = 8.dp))
             Text(
-                "We continuously monitor for suspicious login activities and unauthorized access attempts. If we detect an unusual login from a new device or location, we will promptly notify you and may require additional verification steps to ensure it is actually you accessing your account.",
+                "Your password is handled entirely by Firebase Authentication and is never stored in plaintext on our servers. Passwords must be at least 6 characters long. When you change your password or delete your account, you are required to re-enter your current password to reauthenticate your session. This ensures that even if someone gains temporary access to your unlocked device, they cannot make critical changes without knowing your password. If you forget your password, you can request a secure reset link sent to your registered email.",
                 color = PaginexWhite.copy(alpha = 0.8f),
                 fontSize = 16.sp,
                 lineHeight = 24.sp,
                 modifier = Modifier.padding(bottom = 24.dp)
             )
 
-            Text("Third-Party Audits", color = PaginexWhite, fontWeight = FontWeight.Bold, fontSize = 18.sp, modifier = Modifier.padding(bottom = 8.dp))
+            Text("Data Transport & Storage", color = PaginexWhite, fontWeight = FontWeight.Bold, fontSize = 18.sp, modifier = Modifier.padding(bottom = 8.dp))
             Text(
-                "Paginex routinely undergoes security audits and vulnerability assessments conducted by independent, world-class cybersecurity firms. This rigorous testing helps us identify and mitigate potential vulnerabilities before they can be exploited, keeping our infrastructure hardened against modern threats.",
+                "All communication between the Paginex app and Firebase servers occurs over HTTPS with TLS encryption. Your data at rest in Cloud Firestore and Firebase Storage is encrypted by Google using AES-256. Firestore Security Rules enforce that users can only read and write data they are authorized to access, preventing unauthorized modifications to other users' profiles, posts, or personal data.",
                 color = PaginexWhite.copy(alpha = 0.8f),
                 fontSize = 16.sp,
                 lineHeight = 24.sp,
                 modifier = Modifier.padding(bottom = 24.dp)
             )
-            
-            Text("If you believe you have discovered a security vulnerability in Paginex, please report it to us immediately at security@paginex.com.", color = PaginexWhite.copy(alpha = 0.8f), fontSize = 16.sp, lineHeight = 24.sp, fontStyle = FontStyle.Italic)
+
+            Text("Content Protection", color = PaginexWhite, fontWeight = FontWeight.Bold, fontSize = 18.sp, modifier = Modifier.padding(bottom = 8.dp))
+            Text(
+                "Posts you create can only be deleted within 5 minutes of publication. After this window, posts become a permanent part of the community record. Only you can edit your own posts and drafts. When your account is deleted, your content is attributed to a generic \"Deleted Account\" label — your real name, username, and personal details are fully removed from the visible content.",
+                color = PaginexWhite.copy(alpha = 0.8f),
+                fontSize = 16.sp,
+                lineHeight = 24.sp,
+                modifier = Modifier.padding(bottom = 24.dp)
+            )
+
+            Text("Tips to Keep Your Account Secure", color = PaginexWhite, fontWeight = FontWeight.Bold, fontSize = 18.sp, modifier = Modifier.padding(bottom = 8.dp))
+            Text(
+                "• Use a strong, unique password that you do not reuse on other services.\n" +
+                "• Never share your password with anyone. Paginex staff will never ask for it.\n" +
+                "• If you suspect unauthorized access, change your password immediately from Settings > Password.\n" +
+                "• Keep your email address up to date so you can always recover your account.",
+                color = PaginexWhite.copy(alpha = 0.8f),
+                fontSize = 16.sp,
+                lineHeight = 24.sp,
+                modifier = Modifier.padding(bottom = 24.dp)
+            )
         }
     }
 }
@@ -5781,7 +6119,7 @@ fun AboutScreen(onBack: () -> Unit) {
                 modifier = Modifier.size(120.dp).padding(bottom = 24.dp),
                 contentScale = ContentScale.Fit
             )
-            
+
             Text(
                 "Paginex",
                 color = PaginexWhite,
@@ -5790,36 +6128,57 @@ fun AboutScreen(onBack: () -> Unit) {
                 letterSpacing = 2.sp,
                 modifier = Modifier.padding(bottom = 8.dp)
             )
-            
+
             Text(
-                "Version 1.0.4 (Build 4208)",
+                "Version 1.0",
                 color = PaginexWhite.copy(alpha = 0.5f),
                 fontSize = 14.sp,
                 modifier = Modifier.padding(bottom = 32.dp)
             )
 
             Text(
-                "Paginex is the ultimate reading companion and social platform designed for book lovers. Our mission is to connect readers from across the globe, allowing them to share their literary journeys, review their favorite books, and build their unique personal galaxy of knowledge.",
+                "Paginex is a social reading platform for Android where book lovers share reviews, track what they read, and discover new titles through a vibrant community of readers.",
                 color = PaginexWhite.copy(alpha = 0.8f),
                 fontSize = 16.sp,
                 lineHeight = 24.sp,
                 textAlign = TextAlign.Center,
                 modifier = Modifier.padding(bottom = 24.dp)
             )
-            
+
+            Divider(color = PaginexGlassBorder, thickness = 0.5.dp, modifier = Modifier.padding(vertical = 12.dp))
+
+            Text("What You Can Do", color = PaginexNeonTeal, fontWeight = FontWeight.Bold, fontSize = 18.sp, modifier = Modifier.padding(bottom = 12.dp))
+
             Text(
-                "With Paginex, you don't just read a book; you document your journey. Whether you are exploring the newest science fiction epics or diving deep into classic literature, Paginex provides the tools you need to track your reading progress, save important notes, and engage in meaningful discussions with a community of like-minded individuals.",
+                "• Post book reviews — rate books, write your thoughts, and share them with followers or the wider Paginex community on the Explore page.\n\n" +
+                "• Track your reading — mark books as Reading, Completed, Want to Read, On-Hold, or Dropped and keep an always-up-to-date personal library.\n\n" +
+                "• Build your Galaxy — choose up to 5 favorite books that orbit your profile photo in an animated solar-system visualization unique to you.\n\n" +
+                "• Explore your Constellation — see your reading achievements mapped as a star constellation, ranking the genres and books you have engaged with most.\n\n" +
+                "• Create book lists — curate themed collections like \"Best Sci-Fi of 2026\" or \"Summer Reading\" and share them as posts, or keep them private.\n\n" +
+                "• Save and organize — bookmark posts and reviews from other readers so you can find them later.\n\n" +
+                "• Follow readers — build a personalized Home feed by following users whose taste you trust.\n\n" +
+                "• Draft before you publish — write reviews at your own pace; save drafts and come back to polish them before posting.",
                 color = PaginexWhite.copy(alpha = 0.8f),
-                fontSize = 16.sp,
+                fontSize = 15.sp,
                 lineHeight = 24.sp,
-                textAlign = TextAlign.Center,
-                modifier = Modifier.padding(bottom = 32.dp)
+                modifier = Modifier.padding(bottom = 24.dp)
             )
-            
+
+            Divider(color = PaginexGlassBorder, thickness = 0.5.dp, modifier = Modifier.padding(vertical = 12.dp))
+
+            Text("Built With", color = PaginexNeonTeal, fontWeight = FontWeight.Bold, fontSize = 18.sp, modifier = Modifier.padding(bottom = 12.dp))
+            Text(
+                "• Kotlin & Jetpack Compose\n• Material Design 3\n• Firebase Authentication\n• Cloud Firestore\n• Firebase Storage",
+                color = PaginexWhite.copy(alpha = 0.7f),
+                fontSize = 14.sp,
+                lineHeight = 22.sp,
+                modifier = Modifier.padding(bottom = 24.dp)
+            )
+
             Divider(color = PaginexGlassBorder, thickness = 1.dp, modifier = Modifier.padding(vertical = 16.dp))
 
-            Text("Developed by the Paginex Team", color = PaginexWhite, fontWeight = FontWeight.Bold, fontSize = 16.sp, modifier = Modifier.padding(bottom = 8.dp))
-            Text("© 2026 Paginex Inc. All rights reserved.", color = PaginexWhite.copy(alpha = 0.5f), fontSize = 14.sp, modifier = Modifier.padding(bottom = 24.dp))
+            Text("Made with ❤\uFE0F by the Paginex Team", color = PaginexWhite, fontWeight = FontWeight.Bold, fontSize = 16.sp, modifier = Modifier.padding(bottom = 8.dp))
+            Text("© 2026 Paginex. All rights reserved.", color = PaginexWhite.copy(alpha = 0.5f), fontSize = 14.sp, modifier = Modifier.padding(bottom = 24.dp))
         }
     }
 }

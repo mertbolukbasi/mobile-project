@@ -361,11 +361,14 @@ object FirestoreService {
                     ))
                 } else if (!booklistId.isNullOrEmpty()) {
                     // Try to fetch booklist
-                    // It will rely on refreshSessionCacheFromFirestore's bookLists to later resolve, or we fetch here
                     val listDoc = try { db.collection("booklists").document(booklistId).get().await() } catch (e: Exception) { null }
                     if (listDoc != null && listDoc.exists()) {
                         val fireList = listDoc.toObject(FireBookList::class.java)
                         if (fireList != null) {
+                            // Skip private booklist posts from other users
+                            if (fireList.isPrivate && userId != currentUserId) {
+                                continue
+                            }
                             val booksInList = mutableListOf<Book>()
                             val junctionSnap = try { db.collection("booklist_books").whereEqualTo("booklistId", fireList.id).get().await() } catch(e: Exception) { null }
                             junctionSnap?.documents?.forEach { jDoc ->
@@ -376,12 +379,13 @@ object FirestoreService {
                                     ))
                                 }
                             }
+                            val resolvedCoverUrl = fireList.coverUrl.ifEmpty { booksInList.firstOrNull()?.coverUrl ?: "" }
                             val loadedList = BookList(
                                 id = fireList.id,
                                 userId = fireList.userId,
                                 name = fireList.name,
                                 description = fireList.description,
-                                coverUrl = booksInList.firstOrNull()?.coverUrl ?: "",
+                                coverUrl = resolvedCoverUrl,
                                 isPrivate = fireList.isPrivate,
                                 likesCount = 0,
                                 isLiked = false,
@@ -405,7 +409,7 @@ object FirestoreService {
                                 review = description,
                                 createdAt = createdAt,
                                 isLiked = isLiked,
-                                isSaved = isSaved, // wait, booklist post can't be saved
+                                isSaved = isSaved,
                                 likesCount = totalLikes,
                                 commentsCount = totalComments,
                                 isBooklistPost = true,
@@ -973,6 +977,66 @@ object FirestoreService {
         }
     }
 
+    suspend fun uploadBookListCoverImage(listId: String, imageUri: android.net.Uri, context: android.content.Context): String? {
+        return try {
+            kotlinx.coroutines.withContext(kotlinx.coroutines.NonCancellable) {
+                val inputStream = context.contentResolver.openInputStream(imageUri)
+                    ?: throw Exception("Cannot open input stream for URI: $imageUri")
+                val originalBytes = inputStream.readBytes()
+                inputStream.close()
+
+                Log.d(TAG, "uploadBookListCoverImage: read ${originalBytes.size} bytes for list $listId")
+
+                val bitmap = android.graphics.BitmapFactory.decodeByteArray(originalBytes, 0, originalBytes.size)
+                    ?: throw Exception("Cannot decode image bytes")
+                val maxDim = 600
+                val scale = minOf(maxDim.toFloat() / bitmap.width, maxDim.toFloat() / bitmap.height, 1f)
+                val scaledBitmap = if (scale < 1f) {
+                    android.graphics.Bitmap.createScaledBitmap(bitmap, (bitmap.width * scale).toInt(), (bitmap.height * scale).toInt(), true)
+                } else bitmap
+
+                val compressedStream = java.io.ByteArrayOutputStream()
+                scaledBitmap.compress(android.graphics.Bitmap.CompressFormat.JPEG, 75, compressedStream)
+                val compressedBytes = compressedStream.toByteArray()
+                Log.d(TAG, "uploadBookListCoverImage: compressed to ${compressedBytes.size} bytes")
+
+                var downloadUrl: String? = null
+                try {
+                    val storageRef = com.google.firebase.storage.FirebaseStorage.getInstance()
+                        .reference.child("booklist_covers/$listId.jpg")
+                    storageRef.putBytes(compressedBytes).await()
+                    downloadUrl = storageRef.downloadUrl.await().toString()
+                    Log.d(TAG, "uploadBookListCoverImage: Storage upload success, URL = $downloadUrl")
+                } catch (storageError: Exception) {
+                    Log.w(TAG, "Firebase Storage upload failed, falling back to Base64 data URI", storageError)
+                }
+
+                if (downloadUrl == null) {
+                    val base64 = android.util.Base64.encodeToString(compressedBytes, android.util.Base64.NO_WRAP)
+                    downloadUrl = "data:image/jpeg;base64,$base64"
+                    Log.d(TAG, "uploadBookListCoverImage: using Base64 data URI (${downloadUrl.length} chars)")
+                }
+
+                db.collection("booklists").document(listId).update("coverUrl", downloadUrl, "updatedAt", Timestamp.now()).await()
+                Log.d(TAG, "uploadBookListCoverImage: Firestore updated for list $listId")
+                downloadUrl
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error uploading booklist cover image", e)
+            null
+        }
+    }
+
+    suspend fun hasPostsForBooklist(booklistId: String): Boolean {
+        return try {
+            val snap = db.collection("posts").whereEqualTo("booklistId", booklistId).get().await()
+            !snap.isEmpty
+        } catch (e: Exception) {
+            Log.e(TAG, "Error checking posts for booklist", e)
+            false
+        }
+    }
+
     suspend fun updateFavoriteBooks(userId: String, bookIds: List<String>): Boolean {
         return try {
             db.collection("users").document(userId).update("favoriteBooks", bookIds).await()
@@ -1104,7 +1168,7 @@ object FirestoreService {
                                 userId = fireList.userId,
                                 name = fireList.name,
                                 description = fireList.description,
-                                coverUrl = booksInList.firstOrNull()?.coverUrl ?: "",
+                                coverUrl = fireList.coverUrl.ifEmpty { booksInList.firstOrNull()?.coverUrl ?: "" },
                                 isPrivate = fireList.isPrivate,
                                 createdAt = fireList.createdAt.toDate().time,
                                 books = booksInList
@@ -1159,26 +1223,31 @@ object FirestoreService {
         }
     }
 
-    suspend fun createBookList(name: String, description: String, userId: String, isPrivate: Boolean = false): BookList? {
+    suspend fun createBookList(name: String, description: String, userId: String, isPrivate: Boolean = false, coverUrl: String = ""): BookList? {
         return try {
             val id = "bl_${System.currentTimeMillis()}"
-            val fireList = FireBookList(id = id, name = name, description = description, userId = userId, isPrivate = isPrivate)
+            val fireList = FireBookList(id = id, name = name, description = description, userId = userId, coverUrl = coverUrl, isPrivate = isPrivate)
             db.collection("booklists").document(id).set(fireList).await()
-            BookList(id = id, userId = userId, name = name, description = description, coverUrl = "", isPrivate = isPrivate, createdAt = fireList.createdAt.toDate().time, books = mutableListOf())
+            val ownerName = AppCache.users.find { it.id == userId }?.let { "@${it.username}" } ?: ""
+            BookList(id = id, userId = userId, name = name, description = description, coverUrl = coverUrl, isPrivate = isPrivate, createdAt = fireList.createdAt.toDate().time, books = mutableListOf(), ownerName = ownerName)
         } catch (e: Exception) {
             Log.e(TAG, "Error creating book list", e)
             null
         }
     }
 
-    suspend fun updateBookList(listId: String, name: String, description: String, isPrivate: Boolean): Boolean {
+    suspend fun updateBookList(listId: String, name: String, description: String, isPrivate: Boolean, coverUrl: String? = null): Boolean {
         return try {
-            db.collection("booklists").document(listId).update(
-                "name", name,
-                "description", description,
-                "isPrivate", isPrivate,
-                "updatedAt", Timestamp.now()
-            ).await()
+            val updates = mutableMapOf<String, Any>(
+                "name" to name,
+                "description" to description,
+                "isPrivate" to isPrivate,
+                "updatedAt" to Timestamp.now()
+            )
+            if (coverUrl != null) {
+                updates["coverUrl"] = coverUrl
+            }
+            db.collection("booklists").document(listId).update(updates).await()
             true
         } catch (e: Exception) {
             Log.e(TAG, "Error updating book list", e)
@@ -1359,11 +1428,18 @@ object FirestoreService {
                 // IDs saved by the user that correspond to a real booklist
                 val savedListIds = userSavedIds.filter { allListIds.contains(it) }.toSet()
                 
+                // Build a user lookup map for owner names
+                val allUsersMap = AppCache.users.associateBy { it.id }
+                
                 fireLists.forEach { fl ->
                     val isOwner = fl.userId == currentUserId
                     val isSaved = savedListIds.contains(fl.id)
                     
-                    // Show if: Owner, OR (Public AND (not private)), OR (Saved)
+                    // Determine if this is a "Secret Booklist" for the current user
+                    // Secret = saved by current user, but made private by the owner, and current user is NOT owner
+                    val isSecret = isSaved && fl.isPrivate && !isOwner
+                    
+                    // Show if: Owner, OR public, OR saved (even if private → shows as secret)
                     if (isOwner || !fl.isPrivate || isSaved) {
                         val booksInList = mutableListOf<Book>()
                         val junctionSnap = db.collection("booklist_books").whereEqualTo("booklistId", fl.id).get().await()
@@ -1371,19 +1447,30 @@ object FirestoreService {
                             val bId = jDoc.getString("bookId")
                             AppCache.books.find { it.id == bId }?.let { booksInList.add(it) }
                         }
+                        
+                        // Resolve owner display name (hide for secret booklists)
+                        val ownerDisplayName = if (isSecret) "" else {
+                            allUsersMap[fl.userId]?.let { "@${it.username}" } ?: ""
+                        }
+                        
+                        // Use user-uploaded coverUrl from Firestore; fall back to first book cover
+                        val resolvedCoverUrl = fl.coverUrl.ifEmpty { booksInList.firstOrNull()?.coverUrl ?: "" }
 
                         AppCache.bookLists.add(BookList(
                             id = fl.id,
                             userId = fl.userId,
                             name = fl.name,
                             description = fl.description,
-                            coverUrl = booksInList.firstOrNull()?.coverUrl ?: "",
+                            coverUrl = resolvedCoverUrl,
                             isPrivate = fl.isPrivate,
                             likesCount = listLikesCount[fl.id] ?: 0,
                             isLiked = userLikedIds.contains(fl.id),
                             isSaved = isSaved,
                             createdAt = fl.createdAt.toDate().time,
-                            books = booksInList
+                            books = booksInList,
+                            ownerName = ownerDisplayName,
+                            isSecret = isSecret,
+                            isDeleted = false
                         ))
                     }
                 }

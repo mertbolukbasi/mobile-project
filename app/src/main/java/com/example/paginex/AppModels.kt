@@ -60,7 +60,10 @@ data class BookList(
     val isLiked: Boolean = false,
     val isSaved: Boolean = false,
     val createdAt: Long = System.currentTimeMillis(),
-    val books: MutableList<Book> = mutableListOf()
+    val books: MutableList<Book> = mutableListOf(),
+    val ownerName: String = "",
+    val isSecret: Boolean = false,
+    val isDeleted: Boolean = false
 )
 
 data class ReadingStatus(

@@ -1,6 +1,7 @@
 package com.example.paginex
 
 import com.google.firebase.Timestamp
+import com.google.firebase.firestore.PropertyName
 
 data class FireUser(
     val id: String = "",
@@ -64,7 +65,9 @@ data class FireBookList(
     val name: String = "",
     val description: String = "",
     val userId: String = "",
-    val isPrivate: Boolean = false,
+    val coverUrl: String = "",
+    @get:PropertyName("isPrivate") @set:PropertyName("isPrivate")
+    var isPrivate: Boolean = false,
     val createdAt: Timestamp = Timestamp.now(),
     val updatedAt: Timestamp = Timestamp.now()
 )
