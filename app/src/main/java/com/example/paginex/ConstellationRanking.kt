@@ -68,9 +68,24 @@ object ConstellationRanking {
             rs.book.id to scoreForBook(rs.book.id, feedPosts, favSet, targetUserId, viewerUid)
         }
         val byGenre = deduped.groupBy { it.book.genre }
+        
+        // Calculate average score for each genre
+        val genreScores = byGenre.mapValues { (_, list) ->
+            if (list.isEmpty()) 0f else list.map { scores[it.book.id] ?: 0f }.average().toFloat()
+        }
+        
+        // Keep only top 10 genres
+        val topGenres = genreScores.entries
+            .sortedByDescending { it.value }
+            .take(10)
+            .map { it.key }
+            .toSet()
+
         val ranked = mutableMapOf<String, List<ReadingStatus>>()
         val extras = mutableMapOf<String, Int>()
         for ((genre, list) in byGenre) {
+            if (!topGenres.contains(genre)) continue
+            
             val sorted = list.sortedWith(
                 compareByDescending<ReadingStatus> { scores[it.book.id] ?: 0f }
                     .thenByDescending { it.addedAt }

@@ -21,6 +21,10 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.ui.text.input.ImeAction
 import coil.compose.AsyncImage
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Delete
@@ -310,7 +314,8 @@ fun LibraryBookItem(status: ReadingStatus, isOwner: Boolean = false, onStatusCha
 fun LibrarySelectorSheet(
     targetUserId: String,
     onDismiss: () -> Unit,
-    onBookSelected: (ReadingStatus) -> Unit
+    onBookSelected: (ReadingStatus) -> Unit,
+    onAddBookClick: () -> Unit = {}
 ) {
     var searchQuery by remember { mutableStateOf("") }
     val library = remember(targetUserId, AppCache.readingStatuses.size) {
@@ -350,12 +355,34 @@ fun LibrarySelectorSheet(
                     focusedTextColor = PaginexWhite,
                     unfocusedTextColor = PaginexWhite
                 ),
-                shape = RoundedCornerShape(12.dp)
+                shape = RoundedCornerShape(12.dp),
+                singleLine = true,
+                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search)
             )
 
             if (filteredLibrary.isEmpty()) {
-                Box(modifier = Modifier.fillMaxWidth().weight(1f), contentAlignment = Alignment.Center) {
-                    Text("No books found on your shelf.", color = PaginexWhite.copy(alpha = 0.7f), fontSize = 14.sp)
+                Column(
+                    modifier = Modifier.fillMaxWidth().padding(top = 24.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    Text(
+                        "Couldn't you find any book? Maybe you forgot to add the book to your profile?",
+                        color = PaginexWhite.copy(alpha = 0.7f),
+                        fontSize = 14.sp,
+                        textAlign = TextAlign.Center,
+                        modifier = Modifier.padding(horizontal = 16.dp)
+                    )
+                    Spacer(modifier = Modifier.height(16.dp))
+                    Button(
+                        onClick = {
+                            onDismiss()
+                            onAddBookClick()
+                        },
+                        colors = ButtonDefaults.buttonColors(containerColor = PaginexNeonPurple),
+                        shape = RoundedCornerShape(24.dp)
+                    ) {
+                        Text("Add Book", color = PaginexWhite, fontWeight = FontWeight.Bold)
+                    }
                 }
             } else {
                 LazyColumn(
@@ -419,11 +446,13 @@ fun BookListSelectorSheet(
                     focusedTextColor = PaginexWhite,
                     unfocusedTextColor = PaginexWhite
                 ),
-                shape = RoundedCornerShape(12.dp)
+                shape = RoundedCornerShape(12.dp),
+                singleLine = true,
+                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search)
             )
 
             if (filteredLists.isEmpty()) {
-                Box(modifier = Modifier.fillMaxWidth().weight(1f), contentAlignment = Alignment.Center) {
+                Box(modifier = Modifier.fillMaxWidth().padding(top = 24.dp), contentAlignment = Alignment.TopCenter) {
                     Text("No book lists found.", color = PaginexWhite.copy(alpha = 0.7f), fontSize = 14.sp)
                 }
             } else {

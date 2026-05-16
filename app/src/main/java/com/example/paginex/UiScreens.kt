@@ -56,6 +56,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.zIndex
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.ui.text.input.ImeAction
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.*
 import androidx.navigation.navArgument
@@ -346,7 +348,8 @@ fun PaginexApp() {
                     onPost = { 
                         navController.navigate(Screen.Home.route) { popUpTo(0) }
                     },
-                    onDraftsClick = { navController.navigate(Screen.Drafts.route) }
+                    onDraftsClick = { navController.navigate(Screen.Drafts.route) },
+                    onAddBook = { navController.navigate(Screen.AddBook.route) }
                 ) 
             }
             composable(Screen.Saved.route) {
@@ -630,7 +633,9 @@ fun EditFavoritesSheet(
                     unfocusedBorderColor = PaginexGlassBorder,
                     focusedTextColor = PaginexWhite,
                     unfocusedTextColor = PaginexWhite
-                )
+                ),
+                singleLine = true,
+                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search)
             )
             Spacer(modifier = Modifier.height(16.dp))
 
@@ -864,7 +869,9 @@ fun LoginScreen(
                 unfocusedBorderColor = PaginexGlassBorder,
                 focusedTextColor = PaginexWhite,
                 unfocusedTextColor = PaginexWhite
-            )
+            ),
+            singleLine = true,
+            keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next)
         )
         Spacer(modifier = Modifier.height(16.dp))
         OutlinedTextField(
@@ -878,7 +885,9 @@ fun LoginScreen(
                 unfocusedBorderColor = PaginexGlassBorder,
                 focusedTextColor = PaginexWhite,
                 unfocusedTextColor = PaginexWhite
-            )
+            ),
+            singleLine = true,
+            keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done)
         )
         Spacer(modifier = Modifier.height(8.dp))
         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
@@ -990,7 +999,9 @@ fun ForgotPasswordScreen(onBackToLogin: () -> Unit) {
                     unfocusedBorderColor = PaginexGlassBorder,
                     focusedTextColor = PaginexWhite,
                     unfocusedTextColor = PaginexWhite
-                )
+                ),
+                singleLine = true,
+                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done)
             )
             Spacer(modifier = Modifier.height(24.dp))
             Button(
@@ -1076,7 +1087,9 @@ fun RegisterScreen(onRegistered: () -> Unit, onBackToLogin: () -> Unit) {
                 unfocusedBorderColor = PaginexGlassBorder,
                 focusedTextColor = PaginexWhite,
                 unfocusedTextColor = PaginexWhite
-            )
+            ),
+            singleLine = true,
+            keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next)
         )
 
         Spacer(modifier = Modifier.height(16.dp))
@@ -1092,7 +1105,9 @@ fun RegisterScreen(onRegistered: () -> Unit, onBackToLogin: () -> Unit) {
                 unfocusedBorderColor = PaginexGlassBorder,
                 focusedTextColor = PaginexWhite,
                 unfocusedTextColor = PaginexWhite
-            )
+            ),
+            singleLine = true,
+            keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next)
         )
 
         Spacer(modifier = Modifier.height(16.dp))
@@ -1108,7 +1123,9 @@ fun RegisterScreen(onRegistered: () -> Unit, onBackToLogin: () -> Unit) {
                 unfocusedBorderColor = PaginexGlassBorder,
                 focusedTextColor = PaginexWhite,
                 unfocusedTextColor = PaginexWhite
-            )
+            ),
+            singleLine = true,
+            keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done)
         )
 
         Spacer(modifier = Modifier.height(32.dp))
@@ -1693,7 +1710,8 @@ fun ExploreScreen(onBookClick: (String) -> Unit = {}, onUserClick: (String) -> U
                         focusedBorderColor = PaginexNeonTeal,
                         focusedTextColor = PaginexWhite,
                         unfocusedTextColor = PaginexWhite
-                    )
+                    ),
+                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search)
                 )
             }
         }
@@ -2691,7 +2709,9 @@ fun SavedPostsScreen(onBookClick: (String) -> Unit = {}) {
                     unfocusedContainerColor = PaginexGlass,
                     focusedContainerColor = PaginexGlass
                 ),
-                shape = RoundedCornerShape(12.dp)
+                shape = RoundedCornerShape(12.dp),
+                singleLine = true,
+                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search)
             )
             Spacer(modifier = Modifier.width(12.dp))
             IconButton(
@@ -3765,7 +3785,8 @@ fun AddBookToLibraryScreen(onBack: () -> Unit, onBooksAdded: (Map<Book, String>)
                     leadingIcon = { Icon(Icons.Default.Search, null, tint = PaginexNeonPurple) },
                     trailingIcon = { if (searchQuery.isNotEmpty()) IconButton(onClick = { searchQuery = "" }) { Icon(Icons.Default.Clear, null, tint = PaginexWhite.copy(alpha = 0.5f)) } },
                     colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = PaginexNeonPurple, unfocusedBorderColor = PaginexGlassBorder, focusedTextColor = PaginexWhite, unfocusedTextColor = PaginexWhite, cursorColor = PaginexNeonPurple),
-                    shape = RoundedCornerShape(16.dp), singleLine = true
+                    shape = RoundedCornerShape(16.dp), singleLine = true,
+                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search)
                 )
 
                 LazyColumn(modifier = Modifier.fillMaxSize().padding(horizontal = 16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -4554,7 +4575,7 @@ private fun DraftSavedSnackbar(snackbarData: SnackbarData) {
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
-fun CreatePostScreen(initialPostId: String? = null, onPost: () -> Unit, onDraftsClick: () -> Unit) {
+fun CreatePostScreen(initialPostId: String? = null, onPost: () -> Unit, onDraftsClick: () -> Unit, onAddBook: () -> Unit = {}) {
     val focusManager = androidx.compose.ui.platform.LocalFocusManager.current
     val scope = rememberCoroutineScope()
     val snackbarHostState = remember { SnackbarHostState() }
@@ -4916,6 +4937,10 @@ fun CreatePostScreen(initialPostId: String? = null, onPost: () -> Unit, onDrafts
                     selectedBookList = null
                     status = rs.status
                     showLibrarySelector = false
+                },
+                onAddBookClick = {
+                    showLibrarySelector = false
+                    onAddBook()
                 }
             )
         }
