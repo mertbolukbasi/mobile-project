@@ -1297,6 +1297,53 @@ object FirestoreService {
         }
     }
 
+    /**
+     * Persists a book from an external source (Open Library API) into the Firestore `books`
+     * collection.  Avoids duplicates by checking ISBN first, then title+author.
+     *
+     * @return The Firestore document ID of the (possibly pre-existing) book.
+     */
+    suspend fun addBookToFirestore(book: FireBook): String {
+        return try {
+            // 1. Duplicate check — by ISBN
+            if (book.isbn.isNotBlank()) {
+                val byIsbn = db.collection("books")
+                    .whereEqualTo("isbn", book.isbn)
+                    .limit(1)
+                    .get().await()
+                if (!byIsbn.isEmpty) {
+                    val existingId = byIsbn.documents[0].getString("id") ?: byIsbn.documents[0].id
+                    Log.d(TAG, "addBookToFirestore: duplicate ISBN detected → $existingId")
+                    return existingId
+                }
+            }
+
+            // 2. Duplicate check — by title + author (case-insensitive not feasible in Firestore,
+            //    so we do a simple equality check on the stored fields)
+            val byTitle = db.collection("books")
+                .whereEqualTo("title", book.title)
+                .whereEqualTo("author", book.author)
+                .limit(1)
+                .get().await()
+            if (!byTitle.isEmpty) {
+                val existingId = byTitle.documents[0].getString("id") ?: byTitle.documents[0].id
+                Log.d(TAG, "addBookToFirestore: duplicate title+author detected → $existingId")
+                return existingId
+            }
+
+            // 3. No duplicate — write a new document
+            val newId = "b_${java.util.UUID.randomUUID()}"
+            val toSave = book.copy(id = newId)
+            db.collection("books").document(newId).set(toSave).await()
+            Log.d(TAG, "addBookToFirestore: new book saved → $newId (${book.title})")
+            newId
+        } catch (e: Exception) {
+            Log.e(TAG, "Error adding book to Firestore", e)
+            // Fallback: generate an ID so the caller can still proceed
+            "b_${java.util.UUID.randomUUID()}"
+        }
+    }
+
     suspend fun addBookToLibrary(userId: String, bookId: String, status: String): Boolean {
         return try {
             val existQuery = db.collection("reading_statuses")
@@ -1308,7 +1355,7 @@ object FirestoreService {
                 val docId = existQuery.documents[0].id
                 db.collection("reading_statuses").document(docId).update("status", status, "updatedAt", Timestamp.now()).await()
             } else {
-                val newId = "rs_${System.currentTimeMillis()}"
+                val newId = "rs_${java.util.UUID.randomUUID()}"
                 val rs = FireReadingStatus(
                     id = newId,
                     userId = userId,

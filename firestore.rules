@@ -98,10 +98,13 @@ service cloud.firestore {
         && resource.data.userId == request.auth.uid;
     }
 
-    // --- catalogue (clients read-only; seed via Admin SDK or Console) ---
+    // --- catalogue ---
     match /books/{bookId} {
       allow read: if signedIn();
-      allow write: if false;
+      // Allow authenticated users to add books (e.g. from Open Library API).
+      // Updates and deletes remain blocked to protect catalogue integrity.
+      allow create: if signedIn();
+      allow update, delete: if false;
     }
 
     match /explore_images/{imageId} {

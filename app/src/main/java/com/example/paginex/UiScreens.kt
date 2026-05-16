@@ -89,6 +89,7 @@ sealed class Screen(val route: String, val icon: ImageVector? = null, val label:
     object BookLists : Screen("lists")
     object Drafts : Screen("drafts")
     object Constellation : Screen("constellation")
+    object AddBook : Screen("add_book")
     object Settings : Screen("settings")
     object Privacy : Screen("privacy")
     object Security : Screen("security")
@@ -446,6 +447,32 @@ fun PaginexApp() {
             composable(Screen.Privacy.route) { PrivacyScreen { navController.popBackStack() } }
             composable(Screen.Security.route) { SecurityScreen { navController.popBackStack() } }
             composable(Screen.About.route) { AboutScreen { navController.popBackStack() } }
+            composable(Screen.AddBook.route) {
+                AddBookToLibraryScreen(
+                    onBack = { navController.popBackStack() },
+                    onBooksAdded = { bookStatuses ->
+                        val uid = AuthService.getUid()
+                        bookStatuses.forEach { (book, status) ->
+                            val newStatus = ReadingStatus(
+                                id = "rs_${java.util.UUID.randomUUID()}",
+                                userId = uid,
+                                book = book,
+                                status = status
+                            )
+                            val existingIndex = AppCache.readingStatuses.indexOfFirst { it.userId == uid && it.book.id == book.id }
+                            if (existingIndex != -1) {
+                                AppCache.readingStatuses[existingIndex] = newStatus
+                            } else {
+                                AppCache.readingStatuses.add(newStatus)
+                            }
+                            kotlinx.coroutines.MainScope().launch {
+                                FirestoreService.addBookToLibrary(uid, book.id, status)
+                            }
+                        }
+                        navController.popBackStack()
+                    }
+                )
+            }
             composable(
                 route = Screen.PublicProfile.route,
                 arguments = listOf(navArgument("userId") { type = NavType.StringType })
@@ -552,6 +579,7 @@ fun MainTabsPager(
                 onConstellationClick = { navController.navigate("constellation/${AuthService.getUid()}") },
                 onGalaxyBookClick = { bookId -> navController.navigate("detail/$bookId") },
                 onMyPostClick = { postId -> navController.navigate("post_list/$postId?mode=single") },
+                onAddBookClick = { navController.navigate(Screen.AddBook.route) },
                 onLogoutClick = {
                     AuthService.logout()
                     navController.navigate(Screen.Login.route) { popUpTo(0) }
@@ -2089,6 +2117,7 @@ fun PaginexProfileScreen(
     onConstellationClick: () -> Unit,
     onGalaxyBookClick: (String) -> Unit,
     onMyPostClick: (String) -> Unit,
+    onAddBookClick: () -> Unit = {},
     onLogoutClick: () -> Unit = {} // This might not be needed directly here anymore, but keeping it
 ) {
     val user = AppCache.currentUser
@@ -2101,7 +2130,7 @@ fun PaginexProfileScreen(
             repeatMode = RepeatMode.Restart
         )
     )
-    var showAddBookDialog by remember { mutableStateOf(false) }
+
     var showLogoutDialog by remember { mutableStateOf(false) }
     var selectedFilterStatus by remember { mutableStateOf("Reading") }
     val availableStatuses = listOf("Completed", "Reading", "Plan To Read", "On-hold", "Dropped")
@@ -2261,7 +2290,7 @@ fun PaginexProfileScreen(
             ) {
                 // Add Book Button
                 Button(
-                    onClick = { showAddBookDialog = true },
+                    onClick = onAddBookClick,
                     modifier = Modifier.weight(1f).height(44.dp),
                     shape = RoundedCornerShape(22.dp),
                     colors = ButtonDefaults.buttonColors(containerColor = PaginexNeonPurple),
@@ -2463,33 +2492,7 @@ fun PaginexProfileScreen(
         }
     }
 
-    // Add Book Dialog
-    if (showAddBookDialog) {
-        AddBookToLibraryDialog(
-            onDismiss = { showAddBookDialog = false },
-            onBookAdded = { book, status ->
-                val uid = AuthService.getUid()
-                // Optimistically add to local cache
-                val newStatus = ReadingStatus(
-                    id = "rs_${System.currentTimeMillis()}",
-                    userId = uid,
-                    book = book,
-                    status = status
-                )
-                val existingIndex = AppCache.readingStatuses.indexOfFirst { it.userId == uid && it.book.id == book.id }
-                if (existingIndex != -1) {
-                    AppCache.readingStatuses[existingIndex] = newStatus
-                } else {
-                    AppCache.readingStatuses.add(newStatus)
-                }
-                // Write to Firestore in GlobalScope (survives composable lifecycle)
-                kotlinx.coroutines.MainScope().launch {
-                    FirestoreService.addBookToLibrary(uid, book.id, status)
-                }
-                showAddBookDialog = false 
-            }
-        )
-    }
+
 }
 
 @Composable
@@ -3631,103 +3634,319 @@ fun AddBookToListDialog(bookList: BookList, onDismiss: () -> Unit, onBookAdded: 
     )
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun AddBookToLibraryDialog(onDismiss: () -> Unit, onBookAdded: (Book, String) -> Unit) {
-    var selectedStatus by remember { mutableStateOf("Plan To Read") }
+fun AddBookToLibraryScreen(onBack: () -> Unit, onBooksAdded: (Map<Book, String>) -> Unit) {
     val statuses = listOf("Completed", "Reading", "Plan To Read", "On-hold", "Dropped")
     var searchQuery by remember { mutableStateOf("") }
-    var selectedBook by remember { mutableStateOf<Book?>(null) }
+    val selectedBooks = remember { mutableStateListOf<Book>() }
+    var apiResults by remember { mutableStateOf<List<OpenLibraryService.OpenLibraryBook>>(emptyList()) }
+    var isApiLoading by remember { mutableStateOf(false) }
+    var apiSearchDone by remember { mutableStateOf(false) }
+    val selectedApiBooks = remember { mutableStateListOf<OpenLibraryService.OpenLibraryBook>() }
+    
+    // Depo state
+    var showDepo by remember { mutableStateOf(false) }
+    val bookStatuses = remember { mutableStateMapOf<String, String>() } // Key: book.id or apiBook.key, Value: status
+    var isSavingApiBook by remember { mutableStateOf(false) }
+    val scope = rememberCoroutineScope()
 
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        containerColor = PaginexGalaxy,
-        shape = RoundedCornerShape(24.dp),
-        title = { Text("Add Book to Library", color = PaginexWhite, fontWeight = FontWeight.Bold) },
-        text = {
-            Column {
-                Text("Select status:", color = PaginexWhite.copy(alpha = 0.7f), fontSize = 12.sp)
-                Spacer(modifier = Modifier.height(8.dp))
-                LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    items(statuses) { s ->
-                        val color = readingStatusColor(s)
-                        Surface(
-                            onClick = { selectedStatus = s },
-                            shape = RoundedCornerShape(20.dp),
-                            color = if (selectedStatus == s) color.copy(alpha = 0.2f) else PaginexGlass,
-                            border = BorderStroke(1.dp, if (selectedStatus == s) color else PaginexGlassBorder)
-                        ) {
-                            Text(s, modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp),
-                                color = if (selectedStatus == s) color else PaginexWhite.copy(alpha = 0.7f),
-                                fontSize = 12.sp,
-                                fontWeight = FontWeight.Bold
-                            )
+    LaunchedEffect(searchQuery) {
+        apiSearchDone = false; apiResults = emptyList()
+        val trimmed = searchQuery.trim()
+        if (trimmed.length < 3) { isApiLoading = false; return@LaunchedEffect }
+        isApiLoading = true; delay(500L)
+        apiResults = OpenLibraryService.searchBooks(trimmed)
+        isApiLoading = false; apiSearchDone = true
+    }
+
+    val currentUid = AuthService.getUid()
+    val existingBookIds = AppCache.readingStatuses.filter { it.userId == currentUid }.map { it.book.id }.toSet()
+    val filteredBooks = if (searchQuery.isBlank()) AppCache.books.filter { !existingBookIds.contains(it.id) }
+        else AppCache.books.filter { it.title.contains(searchQuery, ignoreCase = true) && !existingBookIds.contains(it.id) }
+
+    val totalSelected = selectedBooks.size + selectedApiBooks.size
+
+    Scaffold(
+        containerColor = PaginexSpace,
+        topBar = {
+            TopAppBar(
+                title = { Text(if (showDepo) "Review Depo" else "Add Book", color = PaginexWhite, fontWeight = FontWeight.Bold) },
+                navigationIcon = { 
+                    IconButton(onClick = { if (showDepo) showDepo = false else onBack() }) { 
+                        Icon(Icons.Default.ArrowBack, null, tint = PaginexWhite) 
+                    } 
+                },
+                colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.Transparent)
+            )
+        },
+        bottomBar = {
+            Surface(color = PaginexGalaxy, shadowElevation = 8.dp, modifier = Modifier.fillMaxWidth()) {
+                Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp)) {
+                    if (!showDepo) {
+                        // Search & Select Bottom Bar
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text("$totalSelected Book${if (totalSelected != 1) "s" else ""} Selected", color = PaginexWhite, fontWeight = FontWeight.Bold, fontSize = 15.sp)
+                                Text("Ready for staging", color = PaginexWhite.copy(alpha = 0.6f), fontSize = 12.sp)
+                            }
+                            Button(
+                                onClick = { 
+                                    // Initialize default status for newly selected books
+                                    selectedBooks.forEach { if (!bookStatuses.containsKey(it.id)) bookStatuses[it.id] = "Plan To Read" }
+                                    selectedApiBooks.forEach { if (!bookStatuses.containsKey(it.key)) bookStatuses[it.key] = "Plan To Read" }
+                                    showDepo = true 
+                                },
+                                enabled = totalSelected > 0,
+                                colors = ButtonDefaults.buttonColors(containerColor = PaginexNeonPurple),
+                                shape = RoundedCornerShape(12.dp)
+                            ) {
+                                Text("Review", color = PaginexWhite, fontWeight = FontWeight.Bold)
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Icon(Icons.Default.ArrowForward, null, tint = PaginexWhite, modifier = Modifier.size(16.dp))
+                            }
                         }
-                    }
-                }
-                Spacer(modifier = Modifier.height(16.dp))
-
-                OutlinedTextField(
-                    value = searchQuery,
-                    onValueChange = { searchQuery = it },
-                    modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp),
-                    placeholder = { Text("Search...", color = PaginexWhite.copy(alpha = 0.7f)) },
-                    colors = OutlinedTextFieldDefaults.colors(
-                        focusedBorderColor = PaginexNeonPurple,
-                        unfocusedBorderColor = PaginexGlassBorder,
-                        focusedTextColor = PaginexWhite,
-                        unfocusedTextColor = PaginexWhite
-                    ),
-                    shape = RoundedCornerShape(12.dp)
-                )
-
-                Text("Select book:", color = PaginexWhite.copy(alpha = 0.7f), fontSize = 12.sp)
-                Spacer(modifier = Modifier.height(8.dp))
-                LazyColumn(modifier = Modifier.height(200.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    val currentUid = AuthService.getUid()
-                    val existingBookIds = AppCache.readingStatuses.filter { it.userId == currentUid }.map { it.book.id }.toSet()
-                    val filteredBooks = AppCache.books.filter { it.title.contains(searchQuery, ignoreCase = true) && !existingBookIds.contains(it.id) }
-                    items(filteredBooks) { book ->
-                        val isBookSelected = selectedBook?.id == book.id
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clip(RoundedCornerShape(10.dp))
-                                .background(if (isBookSelected) PaginexNeonPurple.copy(alpha = 0.2f) else PaginexGlass)
-                                .border(1.dp, if (isBookSelected) PaginexNeonPurple else Color.Transparent, RoundedCornerShape(10.dp))
-                                .clickable { selectedBook = book }
-                                .padding(10.dp),
-                            verticalAlignment = Alignment.CenterVertically
+                    } else {
+                        // Depo Review Bottom Bar
+                        Button(
+                            onClick = {
+                                if (isSavingApiBook || totalSelected == 0) return@Button
+                                isSavingApiBook = true
+                                scope.launch {
+                                    val finalMap = mutableMapOf<Book, String>()
+                                    
+                                    // 1. Process Local Books
+                                    for (book in selectedBooks) {
+                                        finalMap[book] = bookStatuses[book.id] ?: "Plan To Read"
+                                    }
+                                    
+                                    // 2. Process API Books
+                                    for (apiBook in selectedApiBooks) {
+                                        val fireBook = FireBook(title = apiBook.title, author = apiBook.author,
+                                            genre = apiBook.genre.take(30), summary = "", isbn = apiBook.isbn, coverUrl = apiBook.coverUrl,
+                                            publishYear = if (apiBook.publishYear != null) com.google.firebase.Timestamp(java.util.Date((apiBook.publishYear - 1900), 0, 1)) else null)
+                                        val savedId = FirestoreService.addBookToFirestore(fireBook)
+                                        val uiBook = Book(id = savedId, title = apiBook.title, author = apiBook.author,
+                                            coverUrl = apiBook.coverUrl, genre = apiBook.genre.take(30),
+                                            publishYear = apiBook.publishYear ?: 2020, summary = "", isbn = apiBook.isbn)
+                                        if (AppCache.books.none { it.id == savedId }) AppCache.books.add(uiBook)
+                                        finalMap[uiBook] = bookStatuses[apiBook.key] ?: "Plan To Read"
+                                    }
+                                    
+                                    isSavingApiBook = false
+                                    onBooksAdded(finalMap)
+                                }
+                            },
+                            enabled = totalSelected > 0 && !isSavingApiBook,
+                            modifier = Modifier.fillMaxWidth().height(48.dp),
+                            colors = ButtonDefaults.buttonColors(containerColor = PaginexNeonTeal),
+                            shape = RoundedCornerShape(14.dp)
                         ) {
-                            AsyncImage(
-                                model = book.coverUrl,
-                                contentDescription = null,
-                                modifier = Modifier.size(32.dp, 48.dp).clip(RoundedCornerShape(4.dp)),
-                                contentScale = ContentScale.Crop
-                            )
-                            Spacer(modifier = Modifier.width(10.dp))
-                            Column {
-                                Text(book.title, color = PaginexWhite, fontWeight = FontWeight.Bold, fontSize = 13.sp)
-                                Text(book.author, color = PaginexWhite.copy(alpha = 0.7f), fontSize = 11.sp)
+                            if (isSavingApiBook) {
+                                CircularProgressIndicator(color = PaginexWhite, modifier = Modifier.size(18.dp), strokeWidth = 2.dp)
+                                Spacer(modifier = Modifier.width(8.dp)); Text("Saving...", color = PaginexWhite, fontWeight = FontWeight.Bold, fontSize = 15.sp)
+                            } else {
+                                Icon(Icons.Default.CheckCircle, null, tint = PaginexWhite, modifier = Modifier.size(20.dp))
+                                Spacer(modifier = Modifier.width(6.dp)); Text("Confirm & Add $totalSelected Book${if (totalSelected > 1) "s" else ""}", color = PaginexWhite, fontWeight = FontWeight.Bold, fontSize = 15.sp)
                             }
                         }
                     }
                 }
             }
-        },
-        confirmButton = {
-            Button(
-                onClick = { selectedBook?.let { onBookAdded(it, selectedStatus) } },
-                enabled = selectedBook != null,
-                colors = ButtonDefaults.buttonColors(containerColor = PaginexNeonPurple),
-                shape = RoundedCornerShape(12.dp)
-            ) {
-                Text("Tamam", color = PaginexWhite, fontWeight = FontWeight.Bold)
-            }
-        },
-        dismissButton = {
-            TextButton(onClick = onDismiss) { Text("Close", color = PaginexWhite.copy(alpha = 0.7f)) }
         }
-    )
+    ) { padding ->
+        Column(modifier = Modifier.fillMaxSize().padding(padding).background(PaginexSpace)) {
+            if (!showDepo) {
+                // --- Step 1: Search & Select ---
+                OutlinedTextField(
+                    value = searchQuery, onValueChange = { searchQuery = it },
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
+                    placeholder = { Text("Search by book title...", color = PaginexWhite.copy(alpha = 0.5f)) },
+                    leadingIcon = { Icon(Icons.Default.Search, null, tint = PaginexNeonPurple) },
+                    trailingIcon = { if (searchQuery.isNotEmpty()) IconButton(onClick = { searchQuery = "" }) { Icon(Icons.Default.Clear, null, tint = PaginexWhite.copy(alpha = 0.5f)) } },
+                    colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = PaginexNeonPurple, unfocusedBorderColor = PaginexGlassBorder, focusedTextColor = PaginexWhite, unfocusedTextColor = PaginexWhite, cursorColor = PaginexNeonPurple),
+                    shape = RoundedCornerShape(16.dp), singleLine = true
+                )
+
+                LazyColumn(modifier = Modifier.fillMaxSize().padding(horizontal = 16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    if (filteredBooks.isNotEmpty()) {
+                        item {
+                            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(top = 8.dp, bottom = 4.dp)) {
+                                Text("📚", fontSize = 16.sp); Spacer(Modifier.width(8.dp))
+                                Text("Your Library", color = PaginexNeonPurple, fontWeight = FontWeight.Bold, fontSize = 15.sp)
+                                Spacer(Modifier.width(8.dp))
+                                Box(Modifier.background(PaginexNeonPurple.copy(alpha = 0.15f), RoundedCornerShape(10.dp)).padding(horizontal = 8.dp, vertical = 3.dp)) {
+                                    Text("${filteredBooks.size}", color = PaginexNeonPurple, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                                }
+                            }
+                        }
+                        items(filteredBooks) { book ->
+                            AddBookSearchCard(title = book.title, author = book.author, coverUrl = book.coverUrl,
+                                year = if (book.publishYear > 0) "${book.publishYear}" else null, genre = book.genre,
+                                isSelected = selectedBooks.any { it.id == book.id }, accentColor = PaginexNeonPurple,
+                                onClick = { if (selectedBooks.any { it.id == book.id }) selectedBooks.removeAll { it.id == book.id } else selectedBooks.add(book) })
+                        }
+                    }
+                    if (searchQuery.trim().length >= 3) {
+                        item {
+                            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(top = 16.dp, bottom = 4.dp)) {
+                                Text("🌐", fontSize = 16.sp); Spacer(Modifier.width(8.dp))
+                                Text("Open Library", color = PaginexNeonTeal, fontWeight = FontWeight.Bold, fontSize = 15.sp)
+                                if (isApiLoading) { Spacer(Modifier.width(10.dp)); CircularProgressIndicator(color = PaginexNeonTeal, modifier = Modifier.size(16.dp), strokeWidth = 2.dp) }
+                                else if (apiSearchDone) { Spacer(Modifier.width(8.dp)); Box(Modifier.background(PaginexNeonTeal.copy(alpha = 0.15f), RoundedCornerShape(10.dp)).padding(horizontal = 8.dp, vertical = 3.dp)) { Text("${apiResults.size}", color = PaginexNeonTeal, fontSize = 12.sp, fontWeight = FontWeight.Bold) } }
+                            }
+                        }
+                        if (isApiLoading) {
+                            item { Box(Modifier.fillMaxWidth().padding(vertical = 32.dp), contentAlignment = Alignment.Center) {
+                                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                    CircularProgressIndicator(color = PaginexNeonTeal, modifier = Modifier.size(28.dp), strokeWidth = 2.5.dp)
+                                    Spacer(Modifier.height(12.dp)); Text("Searching Open Library...", color = PaginexWhite.copy(alpha = 0.5f), fontSize = 13.sp)
+                                }
+                            } }
+                        } else if (apiSearchDone && apiResults.isEmpty()) {
+                            item { Text("No results found.", color = PaginexWhite.copy(alpha = 0.4f), fontSize = 13.sp, modifier = Modifier.padding(vertical = 12.dp)) }
+                        } else {
+                            val localTitles = AppCache.books.map { "${it.title.lowercase()}|${it.author.lowercase()}" }.toSet()
+                            val localIsbns = AppCache.books.map { it.isbn.lowercase() }.filter { it.isNotBlank() }.toSet()
+                            val unique = apiResults.filter { a -> val k = "${a.title.lowercase()}|${a.author.lowercase()}"; val im = a.isbn.lowercase().let { it.isNotBlank() && localIsbns.contains(it) }; !localTitles.contains(k) && !im }
+                            items(unique) { apiBook ->
+                                AddBookSearchCard(title = apiBook.title, author = apiBook.author, coverUrl = apiBook.coverUrl,
+                                    year = apiBook.publishYear?.toString(), genre = apiBook.genre.take(30),
+                                    isSelected = selectedApiBooks.any { it.key == apiBook.key }, accentColor = PaginexNeonTeal,
+                                    onClick = { if (selectedApiBooks.any { it.key == apiBook.key }) selectedApiBooks.removeAll { it.key == apiBook.key } else selectedApiBooks.add(apiBook) })
+                            }
+                        }
+                    }
+                    if (searchQuery.isBlank() && filteredBooks.isEmpty()) {
+                        item { Box(Modifier.fillMaxWidth().padding(vertical = 48.dp), contentAlignment = Alignment.Center) {
+                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                Icon(Icons.Default.MenuBook, null, tint = PaginexNeonPurple.copy(alpha = 0.3f), modifier = Modifier.size(56.dp))
+                                Spacer(Modifier.height(12.dp)); Text("Search for a book to add", color = PaginexWhite.copy(alpha = 0.4f), fontSize = 15.sp)
+                                Text("Type at least 3 characters for online search", color = PaginexWhite.copy(alpha = 0.3f), fontSize = 12.sp)
+                            }
+                        } }
+                    }
+                    item { Spacer(Modifier.height(8.dp)) }
+                }
+            } else {
+                // --- Step 2: Depo (Review & Assign) ---
+                LazyColumn(
+                    modifier = Modifier.fillMaxSize().padding(horizontal = 16.dp), 
+                    verticalArrangement = Arrangement.spacedBy(16.dp),
+                    contentPadding = PaddingValues(top = 8.dp, bottom = 24.dp)
+                ) {
+                    item {
+                        Text("Set Reading Status", color = PaginexWhite, fontWeight = FontWeight.Bold, fontSize = 18.sp)
+                        Text("Assign a status for each book below.", color = PaginexWhite.copy(alpha = 0.6f), fontSize = 13.sp)
+                        Spacer(modifier = Modifier.height(8.dp))
+                    }
+                    
+                    // Local Books in Depo
+                    items(selectedBooks) { book ->
+                        DepoBookItem(
+                            title = book.title, author = book.author, coverUrl = book.coverUrl,
+                            currentStatus = bookStatuses[book.id] ?: "Plan To Read",
+                            onStatusChange = { newStatus -> bookStatuses[book.id] = newStatus },
+                            statuses = statuses
+                        )
+                    }
+                    
+                    // API Books in Depo
+                    items(selectedApiBooks) { apiBook ->
+                        DepoBookItem(
+                            title = apiBook.title, author = apiBook.author, coverUrl = apiBook.coverUrl,
+                            currentStatus = bookStatuses[apiBook.key] ?: "Plan To Read",
+                            onStatusChange = { newStatus -> bookStatuses[apiBook.key] = newStatus },
+                            statuses = statuses
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun DepoBookItem(
+    title: String, author: String, coverUrl: String, 
+    currentStatus: String, onStatusChange: (String) -> Unit,
+    statuses: List<String>
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(14.dp))
+            .background(PaginexGlass)
+            .padding(12.dp)
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            if (coverUrl.isNotEmpty()) {
+                AsyncImage(model = coverUrl, contentDescription = null, modifier = Modifier.size(40.dp, 60.dp).clip(RoundedCornerShape(6.dp)), contentScale = ContentScale.Crop)
+            } else {
+                Box(Modifier.size(40.dp, 60.dp).clip(RoundedCornerShape(6.dp)).background(PaginexWhite.copy(alpha = 0.1f)), contentAlignment = Alignment.Center) {
+                    Icon(Icons.Default.MenuBook, null, tint = PaginexWhite.copy(alpha = 0.3f), modifier = Modifier.size(20.dp))
+                }
+            }
+            Spacer(Modifier.width(12.dp))
+            Column {
+                Text(title, color = PaginexWhite, fontWeight = FontWeight.Bold, fontSize = 14.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text(author, color = PaginexWhite.copy(alpha = 0.6f), fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            }
+        }
+        Spacer(modifier = Modifier.height(12.dp))
+        LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            items(statuses) { s ->
+                val color = readingStatusColor(s)
+                val isSelected = currentStatus == s
+                Surface(
+                    onClick = { onStatusChange(s) }, 
+                    shape = RoundedCornerShape(16.dp),
+                    color = if (isSelected) color.copy(alpha = 0.2f) else Color.Transparent,
+                    border = BorderStroke(1.dp, if (isSelected) color else PaginexGlassBorder)
+                ) {
+                    Text(s, modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                        color = if (isSelected) color else PaginexWhite.copy(alpha = 0.6f),
+                        fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun AddBookSearchCard(
+    title: String, author: String, coverUrl: String, year: String?, genre: String,
+    isSelected: Boolean, accentColor: Color, onClick: () -> Unit
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp))
+            .background(if (isSelected) accentColor.copy(alpha = 0.15f) else PaginexGlass)
+            .border(1.5.dp, if (isSelected) accentColor else Color.Transparent, RoundedCornerShape(14.dp))
+            .clickable(onClick = onClick).padding(12.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        if (coverUrl.isNotEmpty()) {
+            AsyncImage(model = coverUrl, contentDescription = null, modifier = Modifier.size(44.dp, 64.dp).clip(RoundedCornerShape(8.dp)), contentScale = ContentScale.Crop)
+        } else {
+            Box(Modifier.size(44.dp, 64.dp).clip(RoundedCornerShape(8.dp)).background(accentColor.copy(alpha = 0.1f)), contentAlignment = Alignment.Center) {
+                Icon(Icons.Default.MenuBook, null, tint = accentColor.copy(alpha = 0.4f), modifier = Modifier.size(24.dp))
+            }
+        }
+        Spacer(Modifier.width(14.dp))
+        Column(Modifier.weight(1f)) {
+            Text(title, color = PaginexWhite, fontWeight = FontWeight.Bold, fontSize = 15.sp, maxLines = 2, overflow = TextOverflow.Ellipsis)
+            Spacer(Modifier.height(2.dp))
+            Text(author, color = PaginexWhite.copy(alpha = 0.7f), fontSize = 13.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                if (genre.isNotBlank() && genre != "General") Text(genre, color = accentColor.copy(alpha = 0.7f), fontSize = 11.sp, maxLines = 1)
+                if (year != null) {
+                    if (genre.isNotBlank() && genre != "General") Text(" · ", color = PaginexWhite.copy(alpha = 0.3f), fontSize = 11.sp)
+                    Text(year, color = PaginexWhite.copy(alpha = 0.5f), fontSize = 11.sp)
+                }
+            }
+        }
+        if (isSelected) Icon(Icons.Default.CheckCircle, null, tint = accentColor, modifier = Modifier.size(24.dp))
+    }
 }
 
 @SuppressLint("UnusedBoxWithConstraintsScope")
