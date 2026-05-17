@@ -4768,7 +4768,7 @@ fun CreatePostScreen(initialPostId: String? = null, onPost: () -> Unit, onDrafts
                             Spacer(modifier = Modifier.height(16.dp))
                             BasicTextField(
                                 value = reviewText,
-                                onValueChange = { reviewText = it },
+                                onValueChange = { newText -> reviewText = newText.filter { c -> c.category != CharCategory.FORMAT } },
                                 modifier = Modifier.fillMaxWidth().height(160.dp),
                                 textStyle = androidx.compose.ui.text.TextStyle(color = PaginexWhite, fontSize = 16.sp, lineHeight = 22.sp),
                                 decorationBox = { innerTextField ->
@@ -4812,8 +4812,9 @@ fun CreatePostScreen(initialPostId: String? = null, onPost: () -> Unit, onDrafts
 
                     Spacer(modifier = Modifier.height(16.dp))
 
-                    // Final Action Buttons
-                    val isReady = reviewText.isNotBlank() && (selectedBook != null || selectedBookList != null) && status != null
+                    // Final Action Buttons – a valid review must have at least one letter or digit
+                    val hasVisibleText = reviewText.any { it.isLetterOrDigit() }
+                    val isReady = hasVisibleText && (selectedBook != null || selectedBookList != null) && status != null
                     val btnColor = when (status) {
                         "Read" -> PaginexNeonTeal
                         "Reading" -> PaginexNeonPurple
@@ -4891,34 +4892,36 @@ fun CreatePostScreen(initialPostId: String? = null, onPost: () -> Unit, onDrafts
                                 .weight(1f)
                                 .height(56.dp),
                             shape = RoundedCornerShape(28.dp),
-                            border = BorderStroke(2.dp, if (isReady) PaginexNeonPurple else PaginexGlassBorder)
+                            border = BorderStroke(if (isReady) 2.dp else 1.dp, if (isReady) PaginexNeonPurple else PaginexGlassBorder.copy(alpha = 0.3f))
                         ) {
                             Text(
                                 "DRAFT",
-                                color = if (isReady) PaginexNeonPurple else Color.Gray,
-                                fontWeight = FontWeight.Black,
+                                color = if (isReady) PaginexNeonPurple else Color.Gray.copy(alpha = 0.4f),
+                                fontWeight = if (isReady) FontWeight.Black else FontWeight.Normal,
                                 fontSize = 14.sp
                             )
                         }
 
-                        Surface(
-                            onClick = { if (isReady) showPublishDialog = true },
+                        Button(
+                            onClick = { showPublishDialog = true },
                             enabled = isReady,
                             modifier = Modifier
                                 .weight(1f)
                                 .height(56.dp),
                             shape = RoundedCornerShape(28.dp),
-                            color = if (isReady) btnColor else PaginexGlass,
-                            border = BorderStroke(2.dp, if (isReady) Color.White else PaginexGlassBorder)
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = btnColor,
+                                contentColor = Color.Black,
+                                disabledContainerColor = PaginexGlass.copy(alpha = 0.3f),
+                                disabledContentColor = Color.Gray.copy(alpha = 0.4f)
+                            ),
+                            border = if (isReady) BorderStroke(2.dp, Color.White) else BorderStroke(1.dp, PaginexGlassBorder.copy(alpha = 0.3f))
                         ) {
-                            Box(contentAlignment = Alignment.Center) {
-                                Text(
-                                    "PUBLISH",
-                                    color = if (isReady) Color.Black else Color.Gray,
-                                    fontWeight = FontWeight.Black,
-                                    fontSize = 14.sp
-                                )
-                            }
+                            Text(
+                                "PUBLISH",
+                                fontWeight = if (isReady) FontWeight.Black else FontWeight.Normal,
+                                fontSize = 14.sp
+                            )
                         }
                     }
                 }
