@@ -56,8 +56,11 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.zIndex
+import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
+import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.*
 import androidx.navigation.navArgument
@@ -1632,9 +1635,10 @@ private fun userMatchesExploreKeywords(user: User, keywords: List<String>): Bool
     return keywords.all { kw -> haystack.contains(kw) }
 }
 
-@OptIn(ExperimentalFoundationApi::class)
+@OptIn(ExperimentalFoundationApi::class, ExperimentalComposeUiApi::class)
 @Composable
 fun ExploreScreen(onBookClick: (String) -> Unit = {}, onUserClick: (String) -> Unit = {}) {
+    val keyboardController = LocalSoftwareKeyboardController.current
     var selectedListForDetails by remember { mutableStateOf<BookList?>(null) }
     var searchQuery by remember { mutableStateOf("") }
     val booksTab = "Books"
@@ -1711,7 +1715,8 @@ fun ExploreScreen(onBookClick: (String) -> Unit = {}, onUserClick: (String) -> U
                         focusedTextColor = PaginexWhite,
                         unfocusedTextColor = PaginexWhite
                     ),
-                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search)
+                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
+                    keyboardActions = KeyboardActions(onSearch = { keyboardController?.hide() })
                 )
             }
         }
@@ -1924,7 +1929,17 @@ fun BookDetailScreen(
     val bookReviews = AppCache.feedPosts.filter { 
         it.book.id == book.id && (!ownerOnly || it.userId == AuthService.getUid())
     }
-    val avgRating = if (bookReviews.isNotEmpty()) bookReviews.filter { it.rating > 0f }.map { it.rating }.average().let { if (it.isNaN()) 0f else it.toFloat() } else 0f
+    val avgRating = run {
+        val ratedReviews = bookReviews.filter { it.rating > 0f }
+        if (ratedReviews.isEmpty()) 0f
+        else {
+            // Her kullanıcının kendi ortalamasını hesapla, sonra kullanıcı ortalamalarını ortala
+            val userAverages = ratedReviews
+                .groupBy { it.userId }
+                .map { (_, posts) -> posts.map { it.rating }.average().toFloat() }
+            userAverages.average().let { if (it.isNaN()) 0f else it.toFloat() }
+        }
+    }
 
     // Cache for reviewer user data
     val reviewerCache = remember { mutableStateMapOf<String, FireUser?>() }
@@ -1975,23 +1990,7 @@ fun BookDetailScreen(
                 Spacer(modifier = Modifier.width(4.dp))
                 Text(String.format("%.1f/10", avgRating), color = Color(0xFFFFD700), fontSize = 14.sp, fontWeight = FontWeight.Bold)
                 
-                Spacer(modifier = Modifier.weight(1f))
 
-                val bookIdx = AppCache.books.indexOfFirst { it.id == book.id }
-                val isBookSaved = if (bookIdx != -1) AppCache.books[bookIdx].isSaved else false
-                val saveScope = rememberCoroutineScope()
-                IconButton(onClick = {
-                    if (bookIdx != -1) {
-                        AppCache.books[bookIdx] = AppCache.books[bookIdx].copy(isSaved = !isBookSaved)
-                        saveScope.launch { FirestoreService.toggleBookSave(book.id, AuthService.getUid(), !book.isSaved) }
-                    }
-                }) {
-                    Icon(
-                        imageVector = if (isBookSaved) Icons.Default.Bookmark else Icons.Default.BookmarkBorder,
-                        contentDescription = "Save Book",
-                        tint = if (isBookSaved) PaginexNeonPurple else Color.Gray
-                    )
-                }
             }
 
             Spacer(modifier = Modifier.height(24.dp))
@@ -4814,7 +4813,7 @@ fun CreatePostScreen(initialPostId: String? = null, onPost: () -> Unit, onDrafts
                     Spacer(modifier = Modifier.height(16.dp))
 
                     // Final Action Buttons
-                    val isReady = reviewText.isNotEmpty() && (selectedBook != null || selectedBookList != null) && status != null
+                    val isReady = reviewText.isNotBlank() && (selectedBook != null || selectedBookList != null) && status != null
                     val btnColor = when (status) {
                         "Read" -> PaginexNeonTeal
                         "Reading" -> PaginexNeonPurple
@@ -4862,7 +4861,7 @@ fun CreatePostScreen(initialPostId: String? = null, onPost: () -> Unit, onDrafts
                                         book = dummyBook,
                                         status = status ?: "Plan To Read",
                                         rating = rating,
-                                        review = reviewText,
+                                        review = reviewText.trim(),
                                         isBooklistPost = selectedBookList != null,
                                         booklist = selectedBookList
                                     )
@@ -5014,7 +5013,7 @@ fun CreatePostScreen(initialPostId: String? = null, onPost: () -> Unit, onDrafts
                                 book = dummyBook,
                                 status = status ?: "Plan To Read",
                                 rating = rating,
-                                review = reviewText,
+                                review = reviewText.trim(),
                                 isBooklistPost = selectedBookList != null,
                                 booklist = selectedBookList
                             )
