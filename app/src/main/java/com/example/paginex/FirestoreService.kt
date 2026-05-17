@@ -336,7 +336,7 @@ object FirestoreService {
                         title = fireBook.title,
                         author = fireBook.author,
                         coverUrl = fireBook.coverUrl,
-                        genre = fireBook.genre,
+                        genre = normalizeGenre(fireBook.genre),
                         publishYear = fireBook.publishYear?.toDate()?.let {
                             val cal = Calendar.getInstance()
                             cal.time = it
@@ -492,7 +492,7 @@ object FirestoreService {
                 if (fireBook != null && booklistId.isNullOrEmpty()) {
                     val book = Book(
                         id = fireBook.id, title = fireBook.title, author = fireBook.author, coverUrl = fireBook.coverUrl,
-                        genre = fireBook.genre, publishYear = fireBook.publishYear?.toDate()?.let {
+                        genre = normalizeGenre(fireBook.genre), publishYear = fireBook.publishYear?.toDate()?.let {
                             val cal = Calendar.getInstance(); cal.time = it; cal.get(Calendar.YEAR)
                         } ?: 2020, summary = fireBook.summary, isbn = fireBook.isbn
                     )
@@ -571,7 +571,7 @@ object FirestoreService {
                     title = fb.title,
                     author = fb.author,
                     coverUrl = fb.coverUrl,
-                    genre = fb.genre,
+                    genre = normalizeGenre(fb.genre),
                     publishYear = fb.publishYear?.toDate()?.let {
                         val cal = Calendar.getInstance(); cal.time = it
                         cal.get(Calendar.YEAR)
@@ -599,7 +599,7 @@ object FirestoreService {
                     title = fireBook.title,
                     author = fireBook.author,
                     coverUrl = fireBook.coverUrl,
-                    genre = fireBook.genre,
+                    genre = normalizeGenre(fireBook.genre),
                     publishYear = fireBook.publishYear?.toDate()?.let {
                         val cal = Calendar.getInstance(); cal.time = it
                         cal.get(Calendar.YEAR)
@@ -1130,7 +1130,7 @@ object FirestoreService {
                         title = fireBook.title,
                         author = fireBook.author,
                         coverUrl = fireBook.coverUrl,
-                        genre = fireBook.genre,
+                        genre = normalizeGenre(fireBook.genre),
                         publishYear = fireBook.publishYear?.toDate()?.let {
                             val cal = Calendar.getInstance()
                             cal.time = it

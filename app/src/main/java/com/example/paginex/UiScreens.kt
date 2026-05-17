@@ -406,7 +406,8 @@ fun PaginexApp() {
                     onBack = { navController.popBackStack() },
                     onNavigateToDetail = { id -> navController.navigate("detail/$id") },
                     onNavigateToUser = { id -> navController.navigate(Screen.PublicProfile.route.replace("{userId}", id)) },
-                    onNavigateToEdit = { id -> navController.navigate(Screen.CreatePost.route + "?postId=$id") }
+                    onNavigateToEdit = { id -> navController.navigate(Screen.CreatePost.route + "?postId=$id") },
+                    onNavigateToBooklists = { userId -> navController.navigate("book_lists/$userId") }
                 )
             }
             composable(
@@ -490,7 +491,8 @@ fun PaginexApp() {
                     onGalaxyBookClick = { bookId -> navController.navigate("detail/$bookId") },
                     onPostClick = { postId -> navController.navigate("post_list/$postId?mode=single") },
                     onListsClick = { navController.navigate("book_lists/${userId}") },
-                    onConstellationClick = { navController.navigate("constellation/${userId}") }
+                    onConstellationClick = { navController.navigate("constellation/${userId}") },
+                    onBooklistClick = { blUserId -> navController.navigate("book_lists/$blUserId") }
                 )
             }
         }
@@ -567,7 +569,8 @@ fun MainTabsPager(
                 onNavigateToUser = { userId ->
                     if (userId == AuthService.getUid()) onTabSettled(3)
                     else navController.navigate(Screen.PublicProfile.createRoute(userId))
-                }
+                },
+                onNavigateToBooklists = { userId -> navController.navigate("book_lists/$userId") }
             )
             1 -> ExploreScreen(
                 onBookClick = { postId -> navController.navigate("detail/$postId") },
@@ -1377,7 +1380,8 @@ fun VerifyEmailScreen(onVerified: () -> Unit, onBackToLogin: () -> Unit) {
 fun PaginexHomeScreen(
     onNavigateToDetail: (String) -> Unit = {},
     onNavigateToEdit: (String) -> Unit = {},
-    onNavigateToUser: (String) -> Unit = {}
+    onNavigateToUser: (String) -> Unit = {},
+    onNavigateToBooklists: (String) -> Unit = {}
 ) {
     val listState = rememberLazyListState()
     var currentSortMode by remember { mutableStateOf("Latest") }
@@ -1543,6 +1547,7 @@ fun PaginexHomeScreen(
                             BookPostCard(
                                 post = post,
                                 onBookClick = { bookId -> onNavigateToDetail(post.id) },
+                                onBooklistClick = { userId -> onNavigateToBooklists(userId) },
                                 onUserClick = onNavigateToUser,
                                 onEditClick = { postId -> onNavigateToEdit(postId) },
                                 onDeleteClick = { postToDelete ->
@@ -2660,6 +2665,7 @@ fun CosmicInputField(label: String, value: String, onValueChange: (String) -> Un
                 onValueChange = onValueChange,
                 enabled = enabled,
                 modifier = Modifier.fillMaxWidth().then(if (isLongText) Modifier.height(120.dp) else Modifier),
+                keyboardOptions = KeyboardOptions(imeAction = if (isLongText) ImeAction.Default else ImeAction.Next),
                 colors = OutlinedTextFieldDefaults.colors(
                     unfocusedContainerColor = Color.Transparent,
                     focusedContainerColor = Color.Transparent,
@@ -3383,12 +3389,15 @@ fun BookListCard(
                     when {
                         bookList.isDeleted -> Icon(Icons.Default.Delete, null, tint = Color.Gray, modifier = Modifier.size(28.dp))
                         bookList.isSecret -> Icon(Icons.Default.Lock, null, tint = Color(0xFFFF6B6B), modifier = Modifier.size(28.dp))
-                        bookList.coverUrl.isNotEmpty() -> AsyncImage(
-                            model = getCoilModel(bookList.coverUrl),
-                            contentDescription = null,
-                            modifier = Modifier.fillMaxSize().clip(RoundedCornerShape(12.dp)),
-                            contentScale = ContentScale.Crop
-                        )
+                        bookList.coverUrl.isNotEmpty() -> {
+                            val coverModel = remember(bookList.coverUrl) { getCoilModel(bookList.coverUrl) }
+                            AsyncImage(
+                                model = coverModel,
+                                contentDescription = null,
+                                modifier = Modifier.fillMaxSize().clip(RoundedCornerShape(12.dp)),
+                                contentScale = ContentScale.Crop
+                            )
+                        }
                         else -> Icon(Icons.Default.List, null, tint = PaginexNeonPurple, modifier = Modifier.size(28.dp))
                     }
                 }
@@ -3690,7 +3699,7 @@ fun AddBookToLibraryScreen(onBack: () -> Unit, onBooksAdded: (Map<Book, String>)
         containerColor = PaginexSpace,
         topBar = {
             TopAppBar(
-                title = { Text(if (showDepo) "Review Depo" else "Add Book", color = PaginexWhite, fontWeight = FontWeight.Bold) },
+                title = { Text(if (showDepo) "Review Storage" else "Add Book", color = PaginexWhite, fontWeight = FontWeight.Bold) },
                 navigationIcon = { 
                     IconButton(onClick = { if (showDepo) showDepo = false else onBack() }) { 
                         Icon(Icons.Default.ArrowBack, null, tint = PaginexWhite) 
@@ -4789,8 +4798,8 @@ fun CreatePostScreen(initialPostId: String? = null, onPost: () -> Unit, onDrafts
 
                     Spacer(modifier = Modifier.height(32.dp))
                     
-                    // Rating Slider
-                    if (status != "Plan To Read") {
+                    // Rating Slider (hidden for booklist posts)
+                    if (status != "Plan To Read" && selectedBookList == null) {
                         Column(
                             modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp),
                             horizontalAlignment = Alignment.CenterHorizontally
@@ -4861,7 +4870,7 @@ fun CreatePostScreen(initialPostId: String? = null, onPost: () -> Unit, onDrafts
                                         userId = uid,
                                         book = dummyBook,
                                         status = status ?: "Plan To Read",
-                                        rating = rating,
+                                        rating = if (selectedBookList != null) 0f else rating,
                                         review = reviewText.trim(),
                                         isBooklistPost = selectedBookList != null,
                                         booklist = selectedBookList
@@ -5015,7 +5024,7 @@ fun CreatePostScreen(initialPostId: String? = null, onPost: () -> Unit, onDrafts
                                 userId = uid,
                                 book = dummyBook,
                                 status = status ?: "Plan To Read",
-                                rating = rating,
+                                rating = if (selectedBookList != null) 0f else rating,
                                 review = reviewText.trim(),
                                 isBooklistPost = selectedBookList != null,
                                 booklist = selectedBookList
@@ -5772,7 +5781,8 @@ fun PublicProfileScreen(
     onGalaxyBookClick: (String) -> Unit,
     onPostClick: (String) -> Unit,
     onListsClick: () -> Unit,
-    onConstellationClick: () -> Unit
+    onConstellationClick: () -> Unit,
+    onBooklistClick: (String) -> Unit = {}
 ) {
     var user by remember { mutableStateOf<User?>(null) }
     var isFollowing by remember { mutableStateOf(false) }
@@ -5995,7 +6005,8 @@ fun PublicProfileScreen(
                 BookPostCard(
                     post = post,
                     onUserClick = { /* Already here */ },
-                    onBookClick = { onPostClick(post.id) }
+                    onBookClick = { onPostClick(post.id) },
+                    onBooklistClick = onBooklistClick
                 )
                 Spacer(modifier = Modifier.height(16.dp))
             }
@@ -6028,7 +6039,8 @@ fun PostListScreen(
     onBack: () -> Unit,
     onNavigateToDetail: (String) -> Unit,
     onNavigateToUser: (String) -> Unit,
-    onNavigateToEdit: (String) -> Unit
+    onNavigateToEdit: (String) -> Unit,
+    onNavigateToBooklists: (String) -> Unit = {}
 ) {
     var postsVersion by remember { mutableIntStateOf(0) }
     val posts = remember(postId, mode, AppCache.feedPosts.size, postsVersion) {
@@ -6071,6 +6083,7 @@ fun PostListScreen(
                     BookPostCard(
                         post = post,
                         onBookClick = { onNavigateToDetail(post.id) },
+                        onBooklistClick = onNavigateToBooklists,
                         onUserClick = onNavigateToUser,
                         onEditClick = { onNavigateToEdit(post.id) },
                         onDeleteClick = { postToDelete ->
@@ -6220,7 +6233,8 @@ fun PrivacyScreen(onBack: () -> Unit) {
                 "Paginex does not sell, rent, or trade your personal information to third parties. We do not integrate third-party advertising or analytics SDKs. Your data is shared only in the following cases:\n\n" +
                 "• Public profile content — your username, display name, avatar, bio, reviews, and book lists are visible to other Paginex users as part of the social features of the app.\n" +
                 "• Legal obligations — we may disclose information if required by law, court order, or governmental request.\n" +
-                "• Firebase services — your data is processed by Google Firebase as our backend infrastructure provider, subject to Google's data processing terms.",
+                "• Firebase services — your data is processed by Google Firebase as our backend infrastructure provider, subject to Google's data processing terms.\n" +
+                "• Open Library API — when you search for new books to add to your library, your search queries are transmitted to the Open Library API to fetch real-time book data. No personal profile data is shared with this service.",
                 color = PaginexWhite.copy(alpha = 0.8f),
                 fontSize = 16.sp,
                 lineHeight = 24.sp,
@@ -6414,7 +6428,18 @@ fun AboutScreen(onBack: () -> Unit) {
 
             Text("Built With", color = PaginexNeonTeal, fontWeight = FontWeight.Bold, fontSize = 18.sp, modifier = Modifier.padding(bottom = 12.dp))
             Text(
-                "• Kotlin & Jetpack Compose\n• Material Design 3\n• Firebase Authentication\n• Cloud Firestore\n• Firebase Storage",
+                "• Kotlin & Jetpack Compose\n• Material Design 3\n• Firebase Authentication\n• Cloud Firestore\n• Firebase Storage\n• Open Library API",
+                color = PaginexWhite.copy(alpha = 0.7f),
+                fontSize = 14.sp,
+                lineHeight = 22.sp,
+                modifier = Modifier.padding(bottom = 24.dp)
+            )
+
+            Divider(color = PaginexGlassBorder, thickness = 0.5.dp, modifier = Modifier.padding(vertical = 12.dp))
+
+            Text("Data Sources", color = PaginexNeonTeal, fontWeight = FontWeight.Bold, fontSize = 18.sp, modifier = Modifier.padding(bottom = 12.dp))
+            Text(
+                "Book search and metadata are powered by the Open Library API, a project of the non-profit Internet Archive.",
                 color = PaginexWhite.copy(alpha = 0.7f),
                 fontSize = 14.sp,
                 lineHeight = 22.sp,

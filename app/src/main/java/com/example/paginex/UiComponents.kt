@@ -287,6 +287,7 @@ fun StatusBadge(status: String) {
 fun BookPostCard(
     post: Post, 
     onBookClick: (String) -> Unit = {},
+    onBooklistClick: (String) -> Unit = {},
     onUserClick: (String) -> Unit = {},
     onEditClick: (String) -> Unit = {},
     onDeleteClick: (Post) -> Unit = {},
@@ -438,15 +439,26 @@ fun BookPostCard(
 
             // Book Content Row
             Row(modifier = Modifier.fillMaxWidth()) {
+                val coverModel = remember(post.book.coverUrl) {
+                    if (post.book.coverUrl.startsWith("data:image")) {
+                        try {
+                            val base64String = post.book.coverUrl.substringAfter("base64,")
+                            android.util.Base64.decode(base64String, android.util.Base64.DEFAULT)
+                        } catch (e: Exception) { post.book.coverUrl }
+                    } else { post.book.coverUrl }
+                }
                 AsyncImage(
-                    model = post.book.coverUrl,
+                    model = coverModel,
                     contentDescription = null,
                     modifier = Modifier
                         .width(120.dp)
                         .height(180.dp)
                         .clip(RoundedCornerShape(12.dp))
                         .border(1.dp, PaginexGlassBorder, RoundedCornerShape(12.dp))
-                        .clickable { onBookClick(post.book.id) },
+                        .clickable {
+                            if (post.isBooklistPost) onBooklistClick(post.userId)
+                            else onBookClick(post.book.id)
+                        },
                     contentScale = ContentScale.Crop
                 )
                 
